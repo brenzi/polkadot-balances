@@ -15,9 +15,14 @@ const dotApi = dotClient.getTypedApi(dot)
 
 main()
 async function main() {
-  const csvFile = fs.readFileSync("my-accounts.csv", "utf8");
+  const csvFilePath = process.argv[2];
+  if (!csvFilePath) {
+    console.error("Usage: node index.js <csv-file-path>");
+    process.exit(1);
+  }
+  const csvFile = fs.readFileSync(csvFilePath, "utf8");
   const parsed = Papa.parse(csvFile, { header: true });
-  const accountsList = parsed.data; // This is an array of objects
+  const accountsList = parsed.data;
 
   //console.log(accountsList);
 
@@ -66,6 +71,7 @@ async function getBalancesForAddressOnChain(api: any, address: string) {
         console.log(`  In Nomination Pool: ${points.toString()}`);
         reservedMismatch -= points.decimalValue();
       }
+      //TODO: pending claims on pool rewards are not yet counted towards total balance here
     }
     if (api.query.Proxy) {
       const proxies = await api.query.Proxy.Proxies.getValue(address);
