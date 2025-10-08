@@ -5,6 +5,10 @@ import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
 import * as fs from "fs";
 import Papa from "papaparse";
 import { firstValueFrom } from "rxjs";
+import XLSX from "xlsx";
+import * as fs from "fs";
+import * as path from "path";
+import { execSync } from "child_process";
 
 const dotClient = createClient(
   withPolkadotSdkCompat(
@@ -33,6 +37,8 @@ const kahClient = createClient(
 );
 const kahApi = kahClient.getTypedApi(kah)
 
+let balances: BalanceRecord = {};
+
 main()
 async function main() {
   const csvFilePath = process.argv[2];
@@ -60,6 +66,32 @@ async function main() {
 
     }
   }
+
+  const { dir, name } = path.parse(csvFilePath);
+  const outputFile = path.join(dir, `${name}-balances.xlsx`);
+
+  const sheets = balanceRecordToSheets(balances, accountsList);
+  const wb = XLSX.utils.book_new();
+  for (const sheetName in sheets) {
+    const aoa = sheets[sheetName];
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    // Convert formula strings to formula cells
+    for (const cell in ws) {
+      if (cell[0] === "!" || typeof ws[cell].v !== "string") continue;
+      if (ws[cell].v.startsWith("=")) {
+        ws[cell].f = ws[cell].v.slice(1); // Remove '='
+        delete ws[cell].v;
+      }
+    }
+    // hide zero balance rows
+    ws['!cols'] = getColHideFlags(aoa);
+
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  }
+  XLSX.writeFile(wb, outputFile);
+  console.log(`Balances written to ${outputFile}`);
+
   await dotClient.destroy();
   await pahClient.destroy();
   await ksmClient.destroy();
@@ -69,7 +101,11 @@ async function main() {
 async function getBalancesForAddressOnChain(client: any, api: any, address: string) {
   const spec = await client.getChainSpecData();
   const decimals = Number(spec.properties.tokenDecimals);
+  const chain = spec.name;
   const symbol = spec.properties.tokenSymbol?.toString() || "UNIT";
+  if (!balances[symbol]) balances[symbol] = {};
+  if (!balances[symbol][chain]) balances[symbol][chain] = {};
+  if (!balances[symbol][chain][address]) balances[symbol][chain][address] = {};
 
   const accountInfo = await api.query.System.Account.getValue(address);
   if (!accountInfo) {
@@ -78,6 +114,8 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
   const { data: balance } = accountInfo;
   const reserved = new Balance(balance.reserved, decimals, symbol);
   const free = new Balance(balance.free, decimals, symbol);
+  balances[symbol][chain][address]["free"] = free;
+  balances[symbol][chain][address]["reserved"] = reserved;
   const miscFrozen = new Balance(balance.miscFrozen ?? 0n, decimals, symbol);
   const feeFrozen = new Balance(balance.feeFrozen ?? 0n, decimals, symbol);
   console.log(` free: ${free.toString()} reserved: ${reserved.toString()} miscFrozen: ${miscFrozen.toString()} feeFrozen: ${feeFrozen.toString()}`);
@@ -89,9 +127,11 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
       if (controller) {
         const stakingLedger = await api.query.Staking.Ledger.getValue(controller.toString());
         if (stakingLedger && stakingLedger.active) {
-          const staked = new Balance(stakingLedger.active, decimals, symbol);
+          let staked = new Balance(stakingLedger.active, decimals, symbol);
+          staked.label="bonded for staking";
           console.log(`  Staked: ${staked.toString()} (controller: ${controller.toString()})`);
           reservedByStaking = staked.decimalValue()
+          balances[symbol][chain][address]["reserved"] = staked;
         }
       }
     } catch (e) {
@@ -207,6 +247,7 @@ class Balance {
   raw: bigint;
   decimals: number;
   symbol: string;
+  label?: string;
 
   constructor(raw: bigint, decimals: number, symbol: string) {
     this.raw = raw;
@@ -221,4 +262,152 @@ class Balance {
   toString(): string {
     return `${this.decimalValue()} ${this.symbol}`;
   }
+}
+
+// token, chain, address, transferrability
+type BalanceRecord = Record<string, Record<string, Record<string, Record<string, Balance>>>>;
+
+function balanceRecordToSheets(
+  balances: BalanceRecord,
+  accountsList: { Address: string; Name?: string }[]
+) {
+  const sheets: Record<string, any[][]> = {};
+
+  for (const token in balances) {
+    const rows: any[][] = [];
+    // Header: Chain, Transferability/Label, ...addresses
+    rows.push([
+      "Chain",
+      "balance kind",
+      ...accountsList.map(acc => acc.Address)
+    ]);
+    rows.push([
+      "",
+      "",
+      ...accountsList.map(acc => acc.Name)
+    ]);
+    rows.push([
+      "",
+      "",
+      ...accountsList.map(acc => acc.BeneficialOwner)
+    ]);
+    rows.push([
+      "Chain",
+      "Type",
+      ...accountsList.map(acc => acc.Controller)
+    ]);
+
+
+    const freeRows: number[] = [];
+    const reservedRows: number[] = [];
+    for (const chain in balances[token]) {
+      let transferability = "free"
+      rows.push([
+        chain,
+        transferability,
+        ...accountsList.map(acc => {
+          const accountBalances = balances[token][chain][acc.Address];
+          const bal = accountBalances ? accountBalances[transferability] : undefined;
+          return bal?.decimalValue() ?? "";
+        })
+      ]);
+      freeRows.push(rows.length); // 1-based for Excel
+
+      transferability = "reserved"
+      // Collect all labels for this transferability
+      const labelSet = new Set<string>();
+      for (const address of accountsList.map(acc => acc.Address)) {
+        const accountBalances = balances[token][chain][address];
+        const bal = accountBalances ? accountBalances[transferability] : undefined;
+        if (bal?.label) labelSet.add(bal.label);
+      }
+
+      // Add row for transferability (no label)
+      rows.push([
+        chain,
+        transferability + " total",
+        ...accountsList.map(acc => {
+          const accountBalances = balances[token][chain][acc.Address];
+          const bal = accountBalances ? accountBalances[transferability] : undefined;
+          return bal?.decimalValue() ?? "";
+        })
+      ]);
+      reservedRows.push(rows.length);
+
+      console.log("label set:", labelSet);
+      // Add rows for each label
+      for (const label of labelSet) {
+        rows.push([
+          chain,
+          `${transferability} (${label})`,
+          ...accountsList.map(acc => {
+            const accountBalances = balances[token][chain][acc.Address];
+            const bal = accountBalances ? accountBalances[transferability] : undefined;
+            return bal?.label === label ? bal.decimalValue() : "";
+          })
+        ]);
+      }
+    }
+
+
+    // Add total rows with formulas
+    const colOffset = 3; // first address column is column D (Excel)
+    const rowCount = rows.length + 1; // Excel is 1-based
+
+    // Total free
+    const totalFreeRow = [
+      "",
+      "Total free",
+      ...accountsList.map((_, i) => {
+        const col = String.fromCharCode(67 + i); // D, E, F, ...
+        const sumRange = freeRows.map(r => `${col}${r}`).join(",");
+        return `=SUM(${sumRange})`;
+      })
+    ];
+    rows.push(totalFreeRow);
+
+    // Total reserved
+    const totalReservedRow = [
+      "",
+      "Total reserved",
+      ...accountsList.map((_, i) => {
+        const col = String.fromCharCode(67 + i);
+        const sumRange = reservedRows.map(r => `${col}${r}`).join(",");
+        return `=SUM(${sumRange})`;
+      })
+    ];
+    rows.push(totalReservedRow);
+
+    // Grand total
+    const grandTotalRow = [
+      "",
+      "Grand total",
+      ...accountsList.map((_, i) => {
+        const col = String.fromCharCode(67 + i);
+        const freeCell = `${col}${rowCount}`;
+        const reservedCell = `${col}${rowCount + 1}`;
+        return `=${freeCell}+${reservedCell}`;
+      })
+    ];
+    rows.push(grandTotalRow);
+    sheets[token] = rows;
+  }
+  return sheets;
+}
+
+function getColHideFlags(rows: any[][]) {
+  // Always show first two columns
+  return rows[0].map((_, colIdx) => {
+    if (colIdx < 2) return {};
+    let sum = 0;
+    for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+      const val = rows[rowIdx][colIdx];
+      if (typeof val === "number") sum += val;
+      else if (typeof val === "string" && !isNaN(Number(val))) sum += Number(val);
+    }
+    if (sum === 0) {
+      return { hidden: true };
+    }
+    return {};
+  });
 }
