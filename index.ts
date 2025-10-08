@@ -1,4 +1,4 @@
-import { dot } from "@polkadot-api/descriptors"
+import { dot, pah, ksm, kah } from "@polkadot-api/descriptors"
 import { createClient, Binary } from "polkadot-api"
 import { getWsProvider } from "polkadot-api/ws-provider/node";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
@@ -12,6 +12,26 @@ const dotClient = createClient(
   )
 );
 const dotApi = dotClient.getTypedApi(dot)
+const ksmClient = createClient(
+  withPolkadotSdkCompat(
+    getWsProvider(["wss://kusama-relay-1.api.integritee.network:443", "wss://kusama.chainbricks.synology.me:4200"])
+  )
+);
+const ksmApi = ksmClient.getTypedApi(ksm)
+
+const pahClient = createClient(
+  withPolkadotSdkCompat(
+    getWsProvider(["wss://bezzera.integritee.network:4130"])
+  )
+);
+const pahApi = pahClient.getTypedApi(pah)
+
+const kahClient = createClient(
+  withPolkadotSdkCompat(
+    getWsProvider(["wss://bezzera.integritee.network:4230"])
+  )
+);
+const kahApi = kahClient.getTypedApi(kah)
 
 main()
 async function main() {
@@ -29,14 +49,25 @@ async function main() {
   for (const account of accountsList) {
     if (account.Address) {
       console.log("Fetching balances for address:", account.Address, ", Name:", account.Name);
-      await getBalancesForAddressOnChain(dotApi, account.Address);
+      console.log("---- on Polkadot Relaychain ----");
+      await getBalancesForAddressOnChain(dotClient, dotApi, account.Address);
+      console.log("---- on PAH ----");
+      await getBalancesForAddressOnChain(pahClient, pahApi, account.Address);
+      console.log("---- on Kusama Relaychain ----");
+      await getBalancesForAddressOnChain(ksmClient, ksmApi, account.Address);
+      console.log("---- on KAH ----");
+      await getBalancesForAddressOnChain(kahClient, kahApi, account.Address);
+
     }
   }
   await dotClient.destroy();
+  await pahClient.destroy();
+  await ksmClient.destroy();
+  await kahClient.destroy();
 }
 
-async function getBalancesForAddressOnChain(api: any, address: string) {
-  const spec = await dotClient.getChainSpecData();
+async function getBalancesForAddressOnChain(client: any, api: any, address: string) {
+  const spec = await client.getChainSpecData();
   const decimals = Number(spec.properties.tokenDecimals);
   const symbol = spec.properties.tokenSymbol?.toString() || "UNIT";
 
@@ -53,7 +84,7 @@ async function getBalancesForAddressOnChain(api: any, address: string) {
   if (reserved.decimalValue() > 0) {
     let reservedMismatch = reserved.decimalValue();
     let reservedByStaking = 0;
-    if (api.query.Staking) {
+    try {
       const controller = await api.query.Staking.Bonded.getValue(address);
       if (controller) {
         const stakingLedger = await api.query.Staking.Ledger.getValue(controller.toString());
@@ -63,8 +94,10 @@ async function getBalancesForAddressOnChain(api: any, address: string) {
           reservedByStaking = staked.decimalValue()
         }
       }
+    } catch (e) {
+      // console.log("  Error fetching staking info:", e.toString());
     }
-    if (api.query.NominationPools) {
+    try {
       const poolMember = await api.query.NominationPools.PoolMembers.getValue(address);
       if (poolMember && poolMember.points) {
         const points = new Balance(poolMember.points, decimals, symbol);
@@ -72,14 +105,18 @@ async function getBalancesForAddressOnChain(api: any, address: string) {
         reservedMismatch -= points.decimalValue();
       }
       //TODO: pending claims on pool rewards are not yet counted towards total balance here
+    } catch (e) {
+      // console.log("  Error fetching nomination pool info:", e.toString());
     }
-    if (api.query.Proxy) {
+    try {
       const proxies = await api.query.Proxy.Proxies.getValue(address);
       if (proxies && proxies.length > 0 && proxies[1] > 0n) {
         const proxyDeposit = new Balance(proxies[1], decimals, symbol)
         console.log(`  Has Proxies with total deposit of: ${proxyDeposit.toString()}`);
         reservedMismatch -= proxyDeposit.decimalValue();
       }
+    } catch (e) {
+      // console.log("  Error fetching proxy info:", e.toString());
     }
     // if (api.query.Multisig) {
     //   // fetch pending multisigs with deposit
@@ -89,7 +126,7 @@ async function getBalancesForAddressOnChain(api: any, address: string) {
     //     console.log(`  Is part of ${userMultisigs.length} multisig(s)`);
     //   }
     // }
-    if (api.query.Preimage) {
+    try {
       const preimages = await api.query.Preimage.RequestStatusFor.getEntries();
       for (const {keyArgs, value} of preimages) {
         if (value.type === "Unrequested") {
@@ -100,8 +137,10 @@ async function getBalancesForAddressOnChain(api: any, address: string) {
           }
         }
       }
+    } catch (e) {
+      // console.log("  Error fetching preimage info:", e.toString());
     }
-    if (api.query.ConvictionVoting) {
+    try {
       const locks = await api.query.ConvictionVoting.ClassLocksFor.getValue(address);
       if (locks && locks.length > 0) {
         const maxLock = locks.reduce((max: any, lock: any) => (Number(lock[1]) > Number(max[1]) ? lock : max), locks[0]);
@@ -109,8 +148,10 @@ async function getBalancesForAddressOnChain(api: any, address: string) {
         console.log(`  Max lock in Conviction Voting: ${maxLockAmount.toString()} (class: ${maxLock[0]})`);
         reservedMismatch -= maxLockAmount.decimalValue();
       }
+    } catch (e) {
+      //console.log("  Error fetching conviction voting info:", e.toString());
     }
-    if (api.query.Referenda) {
+    try {
       const referenda = await api.query.Referenda.ReferendumInfoFor.getEntries();
       for (const {keyArgs, value} of referenda) {
         //console.log(keyArgs.toString(), value);
@@ -120,8 +161,10 @@ async function getBalancesForAddressOnChain(api: any, address: string) {
           reservedMismatch -= referendumDeposit.decimalValue();
         }
       }
+    } catch (e) {
+      //console.log("  Error fetching referendum info:", e.toString());
     }
-    if (api.query.Registrar) {
+    try {
       const paras = await api.query.Registrar.Paras.getEntries();
       for (const {keyArgs, value} of paras) {
         if (value.manager?.toString() === address) {
@@ -130,8 +173,10 @@ async function getBalancesForAddressOnChain(api: any, address: string) {
           reservedMismatch -= paraDeposit.decimalValue();
         }
       }
+    } catch (e) {
+      //console.log("  Error fetching parachain registrar info:", e.toString());
     }
-    if (api.query.Slots) {
+    try {
       const leases = await api.query.Slots.Leases.getEntries();
       for (const {keyArgs, value} of leases) {
         //console.log(`paraId ${keyArgs}`);
@@ -144,7 +189,12 @@ async function getBalancesForAddressOnChain(api: any, address: string) {
           reservedMismatch -= leaseDeposit.decimalValue();
         }
       }
+    } catch (e) {
+      //console.log("  Error fetching parachain slot lease info:", e.toString());
     }
+    // TODO: collatorSelection, assets (poolAssets, foreignAssets),
+    //  uniques, nfts, hrmp, alliance, society, bounties, child_bounties,
+    //  identity, indices, recovery
     //console.log(reservedByStaking, reserved.decimalValue(), reservedMismatch);
     if ((reservedByStaking < reserved.decimalValue() + 0.000001) && (reservedMismatch > 0.000001)) {
       console.log(`  !!! Mismatch in reserved balance accounting: ${reservedMismatch} ${symbol}`);

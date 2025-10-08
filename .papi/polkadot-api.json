@@ -7,6 +7,24 @@
       "metadata": ".papi/metadata/dot.scale",
       "genesis": "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
       "codeHash": "0xa4d527cb0db4146686eeffb216b562fe68440185d5067e6177d1681ff7bb3043"
+    },
+    "pah": {
+      "chain": "polkadot_asset_hub",
+      "metadata": ".papi/metadata/pah.scale",
+      "genesis": "0x68d56f15f85d3136970ec16946040bc1752654e906147f7e43e9d539d7c3de2f",
+      "codeHash": "0xd863e58d979f0f36f78c2779fa8f99f2ecde98744151e11500655058dae37378"
+    },
+    "kah": {
+      "chain": "ksmcc3_asset_hub",
+      "metadata": ".papi/metadata/kah.scale",
+      "genesis": "0x48239ef607d7928874027a43a67689209727dfb3d3dc5e5b03a39bdc2eda771a",
+      "codeHash": "0x5a0e93172b7d4f2030a3a31c2f1aff1e170a323373a48f7f2bc44328872616fc"
+    },
+    "ksm": {
+      "chain": "ksmcc3",
+      "metadata": ".papi/metadata/ksm.scale",
+      "genesis": "0xb0a8d493285c2df73290dfb7e61f870f17b41801197a149ca93654499ea3dafe",
+      "codeHash": "0x9bfa95446bff3c013666fd4c421cb0d8ce16b2e905a6589b58981876abf471d9"
     }
   }
 }
