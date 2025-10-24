@@ -1,4 +1,4 @@
-import { dot, pah, ksm, kah } from "@polkadot-api/descriptors"
+import { dot, pah, ksm, kah, enc } from "@polkadot-api/descriptors"
 import { createClient, Binary } from "polkadot-api"
 import { getWsProvider } from "polkadot-api/ws-provider/node";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
@@ -9,6 +9,7 @@ import XLSX from "xlsx";
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
+import {RELAY_NATIVE_FROM_PARACHAINS} from "./constants";
 
 const dotClient = createClient(
   withPolkadotSdkCompat(
@@ -32,10 +33,18 @@ const pahApi = pahClient.getTypedApi(pah)
 
 const kahClient = createClient(
   withPolkadotSdkCompat(
-    getWsProvider(["wss://bezzera.integritee.network:4230"])
+    getWsProvider(["wss://bezzera.integritee.network:4230", "wss://sys.ibp.network/asset-hub-kusama"])
+    // getWsProvider(["wss://bezzera.integritee.network:4230"])
   )
 );
 const kahApi = kahClient.getTypedApi(kah)
+
+const encClient = createClient(
+  withPolkadotSdkCompat(
+    getWsProvider(["wss://kusama.api.encointer.org"])
+  )
+);
+const encApi = encClient.getTypedApi(enc)
 
 let balances: BalanceRecord = {};
 
@@ -47,7 +56,12 @@ async function main() {
     process.exit(1);
   }
   const csvFile = fs.readFileSync(csvFilePath, "utf8");
-  const parsed = Papa.parse(csvFile, { header: true });
+  // filter commented lines starting with #
+  const filteredCsv = csvFile
+    .split("\n")
+    .filter(line => !line.trim().startsWith("#"))
+    .join("\n");
+  const parsed = Papa.parse(filteredCsv, { header: true });
   const accountsList = parsed.data;
 
   //console.log(accountsList);
@@ -63,7 +77,6 @@ async function main() {
       await getBalancesForAddressOnChain(ksmClient, ksmApi, account.Address);
       console.log("---- on KAH ----");
       await getBalancesForAddressOnChain(kahClient, kahApi, account.Address);
-
     }
   }
 
@@ -96,6 +109,7 @@ async function main() {
   await pahClient.destroy();
   await ksmClient.destroy();
   await kahClient.destroy();
+  await encClient.destroy();
 }
 
 async function getBalancesForAddressOnChain(client: any, api: any, address: string) {
@@ -232,7 +246,92 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
     } catch (e) {
       //console.log("  Error fetching parachain slot lease info:", e.toString());
     }
-    // TODO: collatorSelection, assets (poolAssets, foreignAssets),
+    try {
+      const assets = await api.query.Assets.Metadata.getEntries();
+      for (const {keyArgs, value} of assets) {
+        const assetId = Number(keyArgs[0]);
+        //console.log(`  Checking Asset ID ${assetId}`, value);
+        if (!value) continue;
+        const assetSymbol = value.symbol.asText();
+        const assetDecimals = Number(value.decimals);
+        const assetBalance = await api.query.Assets.Account.getValue(assetId, address);
+        if (assetBalance && assetBalance.balance > 0n) {
+          const balance = new Balance(assetBalance.balance, assetDecimals, assetSymbol);
+          if (!balances[assetSymbol]) balances[assetSymbol] = {};
+          if (!balances[assetSymbol][chain]) balances[assetSymbol][chain] = {};
+          if (!balances[assetSymbol][chain][address]) balances[assetSymbol][chain][address] = {};
+          balances[assetSymbol][chain][address]["free"] = balance;
+          console.log(`  Asset ${assetId} (${assetSymbol}): ${balance.toString()}`);
+        }
+      }
+    } catch (e) {
+      console.error("  Error fetching assets info:", e.toString());
+    }
+    try {
+      const assets = await api.query.ForeignAssets.Metadata.getEntries();
+      for (const {keyArgs, value} of assets) {
+        const assetId = keyArgs[0];
+        if (!value) continue;
+        const assetSymbol = value.symbol.asText();
+        const assetDecimals = Number(value.decimals);
+        const assetBalance = await api.query.ForeignAssets.Account.getValue(assetId, address);
+        if (assetBalance && assetBalance.balance > 0n) {
+          const balance = new Balance(assetBalance.balance, assetDecimals, assetSymbol);
+          if (!balances[assetSymbol]) balances[assetSymbol] = {};
+          if (!balances[assetSymbol][chain]) balances[assetSymbol][chain] = {};
+          if (!balances[assetSymbol][chain][address]) balances[assetSymbol][chain][address] = {};
+          balances[assetSymbol][chain][address]["free"] = balance;
+          console.log(`  ForeignAsset (${assetSymbol}): ${balance.toString()}`);
+        }
+      }
+    } catch (e) {
+      console.error("  Error fetching assets info:", e.toString());
+    }
+    try {
+      const assets = await api.query.AssetConversion.Pools.getEntries();
+      for (const {keyArgs, value} of assets) {
+        const [assetId1, assetId2] = keyArgs[0];
+        const poolAssetId = Number(value)
+        //console.log(`  Found AssetConversion pool for assets ${assetId1} and ${assetId2} with LP token asset ID ${poolAssetId}`);
+        const liq = await api.query.PoolAssets.Account.getValue(poolAssetId, address);
+        if (liq && liq.balance > 0n) {
+          const poolAsset = await api.query.PoolAssets.Asset.getValue(poolAssetId);
+          const liqTotal = poolAsset?.supply ?? 0n;
+          const poolShare = Number(liq.balance) / Number(liqTotal);
+          const poolMeta1 = await api.query.ForeignAssets.Metadata.getValue(assetId1);
+          const poolMeta2 = await api.query.ForeignAssets.Metadata.getValue(assetId2);
+          const assetSymbol1 = safeStringify(assetId1) === safeStringify(RELAY_NATIVE_FROM_PARACHAINS) ? symbol : poolMeta1.symbol.asText();
+          const assetSymbol2 = safeStringify(assetId2) === safeStringify(RELAY_NATIVE_FROM_PARACHAINS) ? symbol : poolMeta2.symbol.asText();
+          const assetDecimals1 = safeStringify(assetId1) === safeStringify(RELAY_NATIVE_FROM_PARACHAINS) ? decimals : Number(poolMeta1.decimals);
+          const assetDecimals2 = safeStringify(assetId2) === safeStringify(RELAY_NATIVE_FROM_PARACHAINS) ? decimals : Number(poolMeta2.decimals);
+          console.log(`    User has liquidity tokens: ${poolShare} of pool of ${assetSymbol1} and ${assetSymbol2}`);
+          //console.log(`    Pool Asset1 (${assetDecimals1}) location:`, safeStringify(assetId1));
+          //console.log(`    Pool Asset2 (${assetDecimals2}) location:`, safeStringify(assetId2));
+          try {
+            const reserves = await api.apis.AssetConversionApi.get_reserves(assetId1, assetId2);
+            //console.log(`    Pool reserves: ${reserves[0]} ${assetSymbol1}, ${reserves[1]} ${assetSymbol2}`);
+            const userAmount1 = new Balance(BigInt(Math.round(poolShare * Number(reserves[0]))), assetDecimals1, assetSymbol1);
+            const userAmount2 = new Balance(BigInt(Math.round(poolShare * Number(reserves[1]))), assetDecimals2, assetSymbol2);
+            console.log(`    Corresponding to underlying assets: ${userAmount1.toString()} and ${userAmount2.toString()}`);
+            if (!balances[assetSymbol1]) balances[assetSymbol1] = {};
+            if (!balances[assetSymbol1][chain]) balances[assetSymbol1][chain] = {};
+            if (!balances[assetSymbol1][chain]["pool"]) balances[assetSymbol1][chain]["pool"] = {};
+            if (!balances[assetSymbol1][chain]["pool"][`LP(${assetSymbol2}/${assetSymbol1})`]) balances[assetSymbol1][chain]["pool"][`LP(${assetSymbol2}/${assetSymbol1})`] = {};
+            balances[assetSymbol1][chain]["pool"][`LP(${assetSymbol2}/${assetSymbol1})`][address] = userAmount1;
+            if (!balances[assetSymbol2]) balances[assetSymbol2] = {};
+            if (!balances[assetSymbol2][chain]) balances[assetSymbol2][chain] = {};
+            if (!balances[assetSymbol2][chain]["pool"]) balances[assetSymbol2][chain]["pool"] = {};
+            if (!balances[assetSymbol2][chain]["pool"][`LP(${assetSymbol2}/${assetSymbol1})`]) balances[assetSymbol2][chain]["pool"][`LP(${assetSymbol2}/${assetSymbol1})`] = {};
+            balances[assetSymbol2][chain]["pool"][`LP(${assetSymbol2}/${assetSymbol1})`][address] = userAmount2;
+          } catch (e) {
+            console.error("    Error fetching pool reserves:", e.toString());
+          }
+        }
+      }
+    } catch (e) {
+      console.error("  Error fetching pool assets info:", e.toString());
+    }
+    // TODO: collatorSelection,
     //  uniques, nfts, hrmp, alliance, society, bounties, child_bounties,
     //  identity, indices, recovery
     //console.log(reservedByStaking, reserved.decimalValue(), reservedMismatch);
@@ -299,6 +398,7 @@ function balanceRecordToSheets(
 
 
     const freeRows: number[] = [];
+    const poolRows: number[] = [];
     const reservedRows: number[] = [];
     for (const chain in balances[token]) {
       let transferability = "free"
@@ -347,12 +447,34 @@ function balanceRecordToSheets(
           })
         ]);
       }
+
+      try {
+        const pools = Object.keys(balances[token][chain]["pool"]);
+        console.log("pools:", pools);
+        for (const pool of pools) {
+          transferability = `pool ${pool} share`;
+          rows.push([
+            chain,
+            transferability,
+            ...accountsList.map(acc => {
+              const accountBalances = balances[token][chain]["pool"];
+              const bal = accountBalances ? accountBalances[pool]?.[acc.Address] : undefined;
+              return bal?.decimalValue() ?? "";
+            })
+          ]);
+          poolRows.push(rows.length); // 1-based for Excel
+        }
+      } catch (e) {
+        // no pools
+      }
     }
 
 
     // Add total rows with formulas
     const colOffset = 3; // first address column is column D (Excel)
     const rowCount = rows.length + 1; // Excel is 1-based
+
+    rows.push([]);
 
     // Total free
     const totalFreeRow = [
@@ -377,16 +499,27 @@ function balanceRecordToSheets(
       })
     ];
     rows.push(totalReservedRow);
-
+    // Total pooled
+    const totalPoolRow = [
+      "",
+      "Total pooled",
+      ...accountsList.map((_, i) => {
+        const col = String.fromCharCode(67 + i); // D, E, F, ...
+        const sumRange = poolRows.map(r => `${col}${r}`).join(",");
+        return `=SUM(${sumRange})`;
+      })
+    ];
+    rows.push(totalPoolRow);
     // Grand total
     const grandTotalRow = [
       "",
       "Grand total",
       ...accountsList.map((_, i) => {
         const col = String.fromCharCode(67 + i);
-        const freeCell = `${col}${rowCount}`;
-        const reservedCell = `${col}${rowCount + 1}`;
-        return `=${freeCell}+${reservedCell}`;
+        const freeCell = `${col}${rowCount + 1}`;
+        const reservedCell = `${col}${rowCount + 2}`;
+        const poolCell = `${col}${rowCount + 3}`;
+        return `=${freeCell}+${reservedCell}+${poolCell}`;
       })
     ];
     rows.push(grandTotalRow);
@@ -410,4 +543,10 @@ function getColHideFlags(rows: any[][]) {
     }
     return {};
   });
+}
+
+function safeStringify(obj: any) {
+  return JSON.stringify(obj, (_, value) =>
+    typeof value === "bigint" ? value.toString() : value
+  );
 }

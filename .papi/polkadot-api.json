@@ -25,6 +25,12 @@
       "metadata": ".papi/metadata/ksm.scale",
       "genesis": "0xb0a8d493285c2df73290dfb7e61f870f17b41801197a149ca93654499ea3dafe",
       "codeHash": "0x9bfa95446bff3c013666fd4c421cb0d8ce16b2e905a6589b58981876abf471d9"
+    },
+    "enc": {
+      "chain": "ksmcc3_encointer",
+      "metadata": ".papi/metadata/enc.scale",
+      "genesis": "0x7dd99936c1e9e6d1ce7d90eb6f33bea8393b4bf87677d675aa63c9cb3e8c5b5b",
+      "codeHash": "0x6b75868e6339e38aa930b244c6cfe45d70401cefab67f8f2a072caf01065e5cd"
     }
   }
 }
