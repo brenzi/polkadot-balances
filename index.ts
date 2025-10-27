@@ -299,6 +299,20 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
       //console.log("  Error fetching parachain slot lease info:", e.toString());
     }
     try {
+      const assets = await api.query.Uniques.Class.getEntries();
+      for (const {keyArgs, value} of assets) {
+        const classId = keyArgs[0];
+        if (!value) continue;
+        if (value.owner === address) {
+          const totalDeposit = new Balance(value.total_deposit, decimals, symbol);
+          console.log(`  Uniques class ${classId}: ${totalDeposit.toString()}`);
+          reservedMismatch -= totalDeposit.decimalValue();
+        }
+      }
+    } catch (e) {
+      console.error("  Error fetching uniques info:", e.toString());
+    }
+    try {
       const assets = await api.query.Assets.Metadata.getEntries();
       for (const {keyArgs, value} of assets) {
         const assetId = Number(keyArgs[0]);
@@ -384,7 +398,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
       console.error("  Error fetching pool assets info:", e.toString());
     }
     // TODO: collatorSelection,
-    //  uniques, nfts, hrmp, alliance, society, bounties, child_bounties,
+    //  nfts, hrmp, alliance, society, bounties, child_bounties,
     //  identity, indices, recovery
     //console.log(reservedByStaking, reserved.decimalValue(), reservedMismatch);
     if ((reservedByStaking < reserved.decimalValue() + 0.000001) && (reservedMismatch > 0.000001)) {
