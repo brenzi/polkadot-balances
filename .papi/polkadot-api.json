@@ -31,6 +31,36 @@
       "metadata": ".papi/metadata/enc.scale",
       "genesis": "0x7dd99936c1e9e6d1ce7d90eb6f33bea8393b4bf87677d675aa63c9cb3e8c5b5b",
       "codeHash": "0x6b75868e6339e38aa930b244c6cfe45d70401cefab67f8f2a072caf01065e5cd"
+    },
+    "itp": {
+      "wsUrl": "wss://polkadot.api.integritee.network",
+      "metadata": ".papi/metadata/itp.scale",
+      "genesis": "0xe13e7af377c64e83f95e0d70d5e5c3c01d697a84538776c5b9bbe0e7d7b6034c",
+      "codeHash": "0xb0af24fed5f16dae6fc97645760ca4371a558b4bccc6b97e85acfea266c919ea"
+    },
+    "itk": {
+      "wsUrl": "wss://kusama.api.integritee.network",
+      "metadata": ".papi/metadata/itk.scale",
+      "genesis": "0xcdedc8eadbfa209d3f207bba541e57c3c58a667b05a2e1d1e86353c9000758da",
+      "codeHash": "0xa2a464ba172642998c46f063260bdab6aeeca2fcb266467494aa948f875f9cae"
+    },
+    "kct": {
+      "chain": "ksmcc3_coretime",
+      "metadata": ".papi/metadata/kct.scale",
+      "genesis": "0x638cd2b9af4b3bb54b8c1f0d22711fc89924ca93300f0caf25a580432b29d050",
+      "codeHash": "0x50fe75ba55e64d6ea4e5be6e3cf69448d54454f1cc6b5ed13b52218af70c9acd"
+    },
+    "kpl": {
+      "chain": "ksmcc3_people",
+      "metadata": ".papi/metadata/kpl.scale",
+      "genesis": "0xc1af4cb4eb3918e5db15086c0cc5ec17fb334f728b7c65dd44bfe1e174ff8b3f",
+      "codeHash": "0x6ccaa6118bf08e6abe366aa99e27adc5d66a0e90e58e13e98eb336419d77bd60"
+    },
+    "ppl": {
+      "chain": "polkadot_people",
+      "metadata": ".papi/metadata/ppl.scale",
+      "genesis": "0x67fa177a097bfa18f77ea95ab56e9bcdfeb0e5b8a40e46298bb93e16b6fc5008",
+      "codeHash": "0x1477b7eaf80f56a1bfe4b6d6dae7cdc68a4353854b58a14700f3646c06783594"
     }
   }
 }

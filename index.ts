@@ -1,4 +1,4 @@
-import { dot, pah, ksm, kah, enc } from "@polkadot-api/descriptors"
+import { dot, pah, ppl, ksm, kah, kct, kpl, enc, itp, itk } from "@polkadot-api/descriptors"
 import { createClient, Binary } from "polkadot-api"
 import { getWsProvider } from "polkadot-api/ws-provider/node";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
@@ -31,6 +31,13 @@ const pahClient = createClient(
 );
 const pahApi = pahClient.getTypedApi(pah)
 
+const pplClient = createClient(
+  withPolkadotSdkCompat(
+    getWsProvider(["wss://sys.ibp.network/people-polkadot"])
+  )
+);
+const pplApi = pplClient.getTypedApi(ppl)
+
 const kahClient = createClient(
   withPolkadotSdkCompat(
     getWsProvider(["wss://bezzera.integritee.network:4230", "wss://sys.ibp.network/asset-hub-kusama"])
@@ -39,12 +46,42 @@ const kahClient = createClient(
 );
 const kahApi = kahClient.getTypedApi(kah)
 
+const kctClient = createClient(
+  withPolkadotSdkCompat(
+    getWsProvider(["wss://sys.ibp.network/coretime-kusama"])
+  )
+);
+const kctApi = kctClient.getTypedApi(kct)
+
+const kplClient = createClient(
+  withPolkadotSdkCompat(
+    getWsProvider(["wss://sys.ibp.network/people-kusama"])
+  )
+);
+const kplApi = kplClient.getTypedApi(kpl)
+
 const encClient = createClient(
   withPolkadotSdkCompat(
     getWsProvider(["wss://kusama.api.encointer.org"])
   )
 );
 const encApi = encClient.getTypedApi(enc)
+
+const itkClient = createClient(
+  withPolkadotSdkCompat(
+    getWsProvider(["wss://kusama.api.integritee.network"])
+  )
+);
+const itkApi = itkClient.getTypedApi(itk)
+
+const itpClient = createClient(
+  withPolkadotSdkCompat(
+    getWsProvider(["wss://polkadot.api.integritee.network"])
+  )
+);
+const itpApi = itpClient.getTypedApi(itp)
+
+
 
 let balances: BalanceRecord = {};
 
@@ -73,10 +110,20 @@ async function main() {
       await getBalancesForAddressOnChain(dotClient, dotApi, account.Address);
       console.log("---- on PAH ----");
       await getBalancesForAddressOnChain(pahClient, pahApi, account.Address);
+      console.log("---- on PPL ----");
+      await getBalancesForAddressOnChain(pplClient, pplApi, account.Address);
       console.log("---- on Kusama Relaychain ----");
       await getBalancesForAddressOnChain(ksmClient, ksmApi, account.Address);
       console.log("---- on KAH ----");
       await getBalancesForAddressOnChain(kahClient, kahApi, account.Address);
+      console.log("---- on KCT ----");
+      await getBalancesForAddressOnChain(kctClient, kctApi, account.Address);
+      console.log("---- on KPL ----");
+      await getBalancesForAddressOnChain(kplClient, kplApi, account.Address);
+      console.log("---- on ITK ----");
+      await getBalancesForAddressOnChain(itkClient, itkApi, account.Address);
+      console.log("---- on ITP ----");
+      await getBalancesForAddressOnChain(itpClient, itpApi, account.Address);
     }
   }
 
@@ -107,9 +154,14 @@ async function main() {
 
   await dotClient.destroy();
   await pahClient.destroy();
+  await pplClient.destroy();
   await ksmClient.destroy();
   await kahClient.destroy();
+  await kctClient.destroy();
+  await kplClient.destroy();
   await encClient.destroy();
+  await itkClient.destroy();
+  await itpClient.destroy();
 }
 
 async function getBalancesForAddressOnChain(client: any, api: any, address: string) {
