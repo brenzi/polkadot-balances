@@ -169,9 +169,6 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
   const decimals = Number(spec.properties.tokenDecimals);
   const chain = spec.name;
   const symbol = spec.properties.tokenSymbol?.toString() || "UNIT";
-  if (!balances[symbol]) balances[symbol] = {};
-  if (!balances[symbol][chain]) balances[symbol][chain] = {};
-  if (!balances[symbol][chain][address]) balances[symbol][chain][address] = {};
 
   const accountInfo = await api.query.System.Account.getValue(address);
   if (!accountInfo) {
@@ -180,8 +177,8 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
   const { data: balance } = accountInfo;
   const reserved = new Balance(balance.reserved, decimals, symbol);
   const free = new Balance(balance.free, decimals, symbol);
-  balances[symbol][chain][address]["free"] = free;
-  balances[symbol][chain][address]["reserved"] = reserved;
+  storeBalance([symbol,chain,address,"free"], free);
+  storeBalance([symbol,chain,address,"reserved"], reserved);
   const miscFrozen = new Balance(balance.miscFrozen ?? 0n, decimals, symbol);
   const feeFrozen = new Balance(balance.feeFrozen ?? 0n, decimals, symbol);
   console.log(` free: ${free.toString()} reserved: ${reserved.toString()} miscFrozen: ${miscFrozen.toString()} feeFrozen: ${feeFrozen.toString()}`);
@@ -197,7 +194,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
           staked.label="bonded for staking";
           console.log(`  Staked: ${staked.toString()} (controller: ${controller.toString()})`);
           reservedByStaking = staked.decimalValue()
-          balances[symbol][chain][address]["reserved"] = staked;
+          storeBalance([symbol,chain,address,"reserved"], staked);
         }
       }
     } catch (e) {
@@ -323,10 +320,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         const assetBalance = await api.query.Assets.Account.getValue(assetId, address);
         if (assetBalance && assetBalance.balance > 0n) {
           const balance = new Balance(assetBalance.balance, assetDecimals, assetSymbol);
-          if (!balances[assetSymbol]) balances[assetSymbol] = {};
-          if (!balances[assetSymbol][chain]) balances[assetSymbol][chain] = {};
-          if (!balances[assetSymbol][chain][address]) balances[assetSymbol][chain][address] = {};
-          balances[assetSymbol][chain][address]["free"] = balance;
+          storeBalance([assetSymbol,chain,address,"free"], balance);
           console.log(`  Asset ${assetId} (${assetSymbol}): ${balance.toString()}`);
         }
       }
@@ -343,10 +337,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         const assetBalance = await api.query.ForeignAssets.Account.getValue(assetId, address);
         if (assetBalance && assetBalance.balance > 0n) {
           const balance = new Balance(assetBalance.balance, assetDecimals, assetSymbol);
-          if (!balances[assetSymbol]) balances[assetSymbol] = {};
-          if (!balances[assetSymbol][chain]) balances[assetSymbol][chain] = {};
-          if (!balances[assetSymbol][chain][address]) balances[assetSymbol][chain][address] = {};
-          balances[assetSymbol][chain][address]["free"] = balance;
+          storeBalance([assetSymbol,chain,address,"free"], balance);
           console.log(`  ForeignAsset (${assetSymbol}): ${balance.toString()}`);
         }
       }
@@ -379,16 +370,8 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
             const userAmount1 = new Balance(BigInt(Math.round(poolShare * Number(reserves[0]))), assetDecimals1, assetSymbol1);
             const userAmount2 = new Balance(BigInt(Math.round(poolShare * Number(reserves[1]))), assetDecimals2, assetSymbol2);
             console.log(`    Corresponding to underlying assets: ${userAmount1.toString()} and ${userAmount2.toString()}`);
-            if (!balances[assetSymbol1]) balances[assetSymbol1] = {};
-            if (!balances[assetSymbol1][chain]) balances[assetSymbol1][chain] = {};
-            if (!balances[assetSymbol1][chain]["pool"]) balances[assetSymbol1][chain]["pool"] = {};
-            if (!balances[assetSymbol1][chain]["pool"][`LP(${assetSymbol2}/${assetSymbol1})`]) balances[assetSymbol1][chain]["pool"][`LP(${assetSymbol2}/${assetSymbol1})`] = {};
-            balances[assetSymbol1][chain]["pool"][`LP(${assetSymbol2}/${assetSymbol1})`][address] = userAmount1;
-            if (!balances[assetSymbol2]) balances[assetSymbol2] = {};
-            if (!balances[assetSymbol2][chain]) balances[assetSymbol2][chain] = {};
-            if (!balances[assetSymbol2][chain]["pool"]) balances[assetSymbol2][chain]["pool"] = {};
-            if (!balances[assetSymbol2][chain]["pool"][`LP(${assetSymbol2}/${assetSymbol1})`]) balances[assetSymbol2][chain]["pool"][`LP(${assetSymbol2}/${assetSymbol1})`] = {};
-            balances[assetSymbol2][chain]["pool"][`LP(${assetSymbol2}/${assetSymbol1})`][address] = userAmount2;
+            storeBalance([assetSymbol1,chain,"pool",`LP(${assetSymbol2}/${assetSymbol1})`,address], userAmount1);
+            storeBalance([assetSymbol2,chain,"pool",`LP(${assetSymbol2}/${assetSymbol1})`,address], userAmount2);
           } catch (e) {
             console.error("    Error fetching pool reserves:", e.toString());
           }
@@ -615,4 +598,14 @@ function safeStringify(obj: any) {
   return JSON.stringify(obj, (_, value) =>
     typeof value === "bigint" ? value.toString() : value
   );
+}
+
+function storeBalance(path: (string | number)[], balance: Balance) {
+  let current = balances;
+  for (let i = 0; i < path.length - 1; i++) {
+    const key = path[i];
+    if (!(key in current)) current[key] = {};
+    current = current[key];
+  }
+  current[path[path.length - 1]] = balance;
 }
