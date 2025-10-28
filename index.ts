@@ -110,20 +110,20 @@ async function main() {
       await getBalancesForAddressOnChain(dotClient, dotApi, account.Address);
       console.log("---- on PAH ----");
       await getBalancesForAddressOnChain(pahClient, pahApi, account.Address);
-      // console.log("---- on PPL ----");
-      // await getBalancesForAddressOnChain(pplClient, pplApi, account.Address);
-      // console.log("---- on Kusama Relaychain ----");
-      // await getBalancesForAddressOnChain(ksmClient, ksmApi, account.Address);
-      // console.log("---- on KAH ----");
-      // await getBalancesForAddressOnChain(kahClient, kahApi, account.Address);
-      // console.log("---- on KCT ----");
-      // await getBalancesForAddressOnChain(kctClient, kctApi, account.Address);
-      // console.log("---- on KPL ----");
-      // await getBalancesForAddressOnChain(kplClient, kplApi, account.Address);
-      // console.log("---- on ITK ----");
-      // await getBalancesForAddressOnChain(itkClient, itkApi, account.Address);
-      // console.log("---- on ITP ----");
-      // await getBalancesForAddressOnChain(itpClient, itpApi, account.Address);
+      console.log("---- on PPL ----");
+      await getBalancesForAddressOnChain(pplClient, pplApi, account.Address);
+      console.log("---- on Kusama Relaychain ----");
+      await getBalancesForAddressOnChain(ksmClient, ksmApi, account.Address);
+      console.log("---- on KAH ----");
+      await getBalancesForAddressOnChain(kahClient, kahApi, account.Address);
+      console.log("---- on KCT ----");
+      await getBalancesForAddressOnChain(kctClient, kctApi, account.Address);
+      console.log("---- on KPL ----");
+      await getBalancesForAddressOnChain(kplClient, kplApi, account.Address);
+      console.log("---- on ITK ----");
+      await getBalancesForAddressOnChain(itkClient, itkApi, account.Address);
+      console.log("---- on ITP ----");
+      await getBalancesForAddressOnChain(itpClient, itpApi, account.Address);
     }
   }
 
@@ -298,6 +298,13 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
           reservedMismatch -= leaseDeposit.decimalValue();
         }
       }
+    } catch (e) {
+      //console.log("  Error fetching parachain slot lease info:", e.toString());
+    }
+    try {
+      const channels = await api.query.Hrmp.HrmpChannels.getEntries();
+      // TODO: we can't easily find hrmp channels for sovereign accounts
+      //  because they're only referenced by ParaId
     } catch (e) {
       //console.log("  Error fetching parachain slot lease info:", e.toString());
     }
