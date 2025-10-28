@@ -110,20 +110,20 @@ async function main() {
       await getBalancesForAddressOnChain(dotClient, dotApi, account.Address);
       console.log("---- on PAH ----");
       await getBalancesForAddressOnChain(pahClient, pahApi, account.Address);
-      console.log("---- on PPL ----");
-      await getBalancesForAddressOnChain(pplClient, pplApi, account.Address);
-      console.log("---- on Kusama Relaychain ----");
-      await getBalancesForAddressOnChain(ksmClient, ksmApi, account.Address);
-      console.log("---- on KAH ----");
-      await getBalancesForAddressOnChain(kahClient, kahApi, account.Address);
-      console.log("---- on KCT ----");
-      await getBalancesForAddressOnChain(kctClient, kctApi, account.Address);
-      console.log("---- on KPL ----");
-      await getBalancesForAddressOnChain(kplClient, kplApi, account.Address);
-      console.log("---- on ITK ----");
-      await getBalancesForAddressOnChain(itkClient, itkApi, account.Address);
-      console.log("---- on ITP ----");
-      await getBalancesForAddressOnChain(itpClient, itpApi, account.Address);
+      // console.log("---- on PPL ----");
+      // await getBalancesForAddressOnChain(pplClient, pplApi, account.Address);
+      // console.log("---- on Kusama Relaychain ----");
+      // await getBalancesForAddressOnChain(ksmClient, ksmApi, account.Address);
+      // console.log("---- on KAH ----");
+      // await getBalancesForAddressOnChain(kahClient, kahApi, account.Address);
+      // console.log("---- on KCT ----");
+      // await getBalancesForAddressOnChain(kctClient, kctApi, account.Address);
+      // console.log("---- on KPL ----");
+      // await getBalancesForAddressOnChain(kplClient, kplApi, account.Address);
+      // console.log("---- on ITK ----");
+      // await getBalancesForAddressOnChain(itkClient, itkApi, account.Address);
+      // console.log("---- on ITP ----");
+      // await getBalancesForAddressOnChain(itpClient, itpApi, account.Address);
     }
   }
 
@@ -216,6 +216,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
       if (proxies && proxies.length > 0 && proxies[1] > 0n) {
         const proxyDeposit = new Balance(proxies[1], decimals, symbol)
         console.log(`  Has Proxies with total deposit of: ${proxyDeposit.toString()}`);
+        storeBalance([symbol,chain,"reservedReason", "proxy", address], proxyDeposit);
         reservedMismatch -= proxyDeposit.decimalValue();
       }
     } catch (e) {
@@ -236,6 +237,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
           if (value.value.ticket[0].toString() === address) {
             const preimageDeposit = new Balance(value.value.ticket[1], decimals, symbol);
             console.log(`  Has unrequested preimage with deposit: ${preimageDeposit.toString()}`);
+            storeBalance([symbol,chain,"reservedReason", `preimage(${keyArgs.toString()})`, address], preimageDeposit);
             reservedMismatch -= preimageDeposit.decimalValue();
           }
         }
@@ -249,6 +251,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         const maxLock = locks.reduce((max: any, lock: any) => (Number(lock[1]) > Number(max[1]) ? lock : max), locks[0]);
         const maxLockAmount = new Balance(maxLock[1], decimals, symbol);
         console.log(`  Max lock in Conviction Voting: ${maxLockAmount.toString()} (class: ${maxLock[0]})`);
+        storeBalance([symbol,chain,"reservedReason", "convictionVoting", address], maxLockAmount);
         reservedMismatch -= maxLockAmount.decimalValue();
       }
     } catch (e) {
@@ -261,6 +264,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         if (value.value[1]?.amount && value.value[1].who?.toString() === address) {
           const referendumDeposit = new Balance(value.value[1].amount, decimals, symbol);
           console.log(`  Referendum ${keyArgs.toString()} created by this account with deposit: ${referendumDeposit.toString()} and status: ${value.type}`);
+          storeBalance([symbol,chain,"reservedReason", `referendum(${keyArgs.toString()})`, address], referendumDeposit);
           reservedMismatch -= referendumDeposit.decimalValue();
         }
       }
@@ -273,6 +277,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         if (value.manager?.toString() === address) {
           const paraDeposit = new Balance(value.deposit, decimals, symbol);
           console.log(`  Para ${keyArgs.toString()} managed by this account with deposit: ${paraDeposit.toString()}`);
+          storeBalance([symbol,chain,"reservedReason", `paras(${keyArgs.toString()})`, address], paraDeposit);
           reservedMismatch -= paraDeposit.decimalValue();
         }
       }
@@ -289,6 +294,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         if (maxLocks > 0n) {
           const leaseDeposit = new Balance(maxLocks, decimals, symbol);
           console.log(`  Slot lease for para ${keyArgs.toString()} with deposit: ${leaseDeposit.toString()}`);
+          storeBalance([symbol,chain,"reservedReason", `leases(${keyArgs.toString()})`, address], leaseDeposit);
           reservedMismatch -= leaseDeposit.decimalValue();
         }
       }
@@ -303,6 +309,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         if (value.owner === address) {
           const totalDeposit = new Balance(value.total_deposit, decimals, symbol);
           console.log(`  Uniques class ${classId}: ${totalDeposit.toString()}`);
+          storeBalance([symbol,chain,"reservedReason", `uniques(${classId})`, address], totalDeposit);
           reservedMismatch -= totalDeposit.decimalValue();
         }
       }
@@ -386,6 +393,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
     //console.log(reservedByStaking, reserved.decimalValue(), reservedMismatch);
     if ((reservedByStaking < reserved.decimalValue() + 0.000001) && (reservedMismatch > 0.000001)) {
       console.log(`  !!! Mismatch in reserved balance accounting: ${reservedMismatch} ${symbol}`);
+      storeBalance([symbol,chain,"reservedReason", `unknown`, address], new Balance(BigInt(Math.round(reservedMismatch * 10 ** decimals)), decimals, symbol));
     }
   }
   return `${free} ${symbol} (reserved: ${reserved} ${symbol}, miscFrozen: ${miscFrozen} ${symbol}, feeFrozen: ${feeFrozen} ${symbol})`
@@ -495,6 +503,24 @@ function balanceRecordToSheets(
             return bal?.label === label ? bal.decimalValue() : "";
           })
         ]);
+      }
+      try {
+        const reasons = Object.keys(balances[token][chain]["reservedReason"]);
+        console.log("reserved reasons:", reasons);
+        for (const reason of reasons) {
+          transferability = `reserved: ${reason}`;
+          rows.push([
+            chain,
+            transferability,
+            ...accountsList.map(acc => {
+              const accountBalances = balances[token][chain]["reservedReason"];
+              const bal = accountBalances ? accountBalances[reason]?.[acc.Address] : undefined;
+              return bal?.decimalValue() ?? "";
+            })
+          ]);
+        }
+      } catch (e) {
+        // no reserved reasons
       }
 
       try {
