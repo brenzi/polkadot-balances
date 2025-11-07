@@ -6,31 +6,31 @@
       "chain": "polkadot",
       "metadata": ".papi/metadata/dot.scale",
       "genesis": "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
-      "codeHash": "0xa4d527cb0db4146686eeffb216b562fe68440185d5067e6177d1681ff7bb3043"
+      "codeHash": "0xf77ad7a9fd6b985eb278204dc2964bc37c5d7d24ed9b08df38c4b629720d6d11"
     },
     "pah": {
-      "chain": "polkadot_asset_hub",
+      "wsUrl": "wss://sys.ibp.network/asset-hub-polkadot",
       "metadata": ".papi/metadata/pah.scale",
       "genesis": "0x68d56f15f85d3136970ec16946040bc1752654e906147f7e43e9d539d7c3de2f",
-      "codeHash": "0xd863e58d979f0f36f78c2779fa8f99f2ecde98744151e11500655058dae37378"
+      "codeHash": "0x3581345028abc07243eb48840fbb333637b0ddeec2a9210d370207148022abaa"
     },
     "kah": {
-      "chain": "ksmcc3_asset_hub",
+      "wsUrl": "wss://sys.ibp.network/asset-hub-kusama",
       "metadata": ".papi/metadata/kah.scale",
       "genesis": "0x48239ef607d7928874027a43a67689209727dfb3d3dc5e5b03a39bdc2eda771a",
-      "codeHash": "0x5a0e93172b7d4f2030a3a31c2f1aff1e170a323373a48f7f2bc44328872616fc"
+      "codeHash": "0xe3b1cff634878a0176df177caaa6333efca2c33fc7313fdf66c3195e2ed15883"
     },
     "ksm": {
       "chain": "ksmcc3",
       "metadata": ".papi/metadata/ksm.scale",
       "genesis": "0xb0a8d493285c2df73290dfb7e61f870f17b41801197a149ca93654499ea3dafe",
-      "codeHash": "0x9bfa95446bff3c013666fd4c421cb0d8ce16b2e905a6589b58981876abf471d9"
+      "codeHash": "0x1e0c7ef66f67073483ec5ad670c6b226fbd9a26e2e7d9b61afb65f2b82f95854"
     },
     "enc": {
       "chain": "ksmcc3_encointer",
       "metadata": ".papi/metadata/enc.scale",
       "genesis": "0x7dd99936c1e9e6d1ce7d90eb6f33bea8393b4bf87677d675aa63c9cb3e8c5b5b",
-      "codeHash": "0x6b75868e6339e38aa930b244c6cfe45d70401cefab67f8f2a072caf01065e5cd"
+      "codeHash": "0x366b42605f9397fd82738e924506fa249a06a9011f324895951b352c2c977c3c"
     },
     "itp": {
       "wsUrl": "wss://polkadot.api.integritee.network",
@@ -59,8 +59,8 @@
     "ppl": {
       "chain": "polkadot_people",
       "metadata": ".papi/metadata/ppl.scale",
-      "genesis": "0x67fa177a097bfa18f77ea95ab56e9bcdfeb0e5b8a40e46298bb93e16b6fc5008",
-      "codeHash": "0x1477b7eaf80f56a1bfe4b6d6dae7cdc68a4353854b58a14700f3646c06783594"
+      "genesis": "0x4545454545454545454545454545454545454545454545454545454545454545",
+      "codeHash": "0x7b4909618dd4a513bc496d3de93a434aa4f7deab36785565c4d588de5d9d2498"
     }
   }
 }

@@ -198,7 +198,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         }
       }
     } catch (e) {
-      // console.log("  Error fetching staking info:", e.toString());
+      console.error("  Error fetching staking info:", e.toString());
     }
     try {
       const poolMember = await api.query.NominationPools.PoolMembers.getValue(address);
@@ -209,7 +209,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
       }
       //TODO: pending claims on pool rewards are not yet counted towards total balance here
     } catch (e) {
-      // console.log("  Error fetching nomination pool info:", e.toString());
+      console.error("  Error fetching nomination pool info:", e.toString());
     }
     try {
       const proxies = await api.query.Proxy.Proxies.getValue(address);
@@ -220,7 +220,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         reservedMismatch -= proxyDeposit.decimalValue();
       }
     } catch (e) {
-      // console.log("  Error fetching proxy info:", e.toString());
+      console.error("  Error fetching proxy info:", e.toString());
     }
     // if (api.query.Multisig) {
     //   // fetch pending multisigs with deposit
@@ -243,7 +243,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         }
       }
     } catch (e) {
-      // console.log("  Error fetching preimage info:", e.toString());
+      console.error("  Error fetching preimage info:", e.toString());
     }
     try {
       const locks = await api.query.ConvictionVoting.ClassLocksFor.getValue(address);
@@ -255,7 +255,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         reservedMismatch -= maxLockAmount.decimalValue();
       }
     } catch (e) {
-      //console.log("  Error fetching conviction voting info:", e.toString());
+      console.error("  Error fetching conviction voting info:", e.toString());
     }
     try {
       const referenda = await api.query.Referenda.ReferendumInfoFor.getEntries();
@@ -269,7 +269,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         }
       }
     } catch (e) {
-      //console.log("  Error fetching referendum info:", e.toString());
+      console.error("  Error fetching referendum info:", e.toString());
     }
     try {
       const paras = await api.query.Registrar.Paras.getEntries();
@@ -282,7 +282,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         }
       }
     } catch (e) {
-      //console.log("  Error fetching parachain registrar info:", e.toString());
+      console.error("  Error fetching parachain registrar info:", e.toString());
     }
     try {
       const leases = await api.query.Slots.Leases.getEntries();
@@ -299,14 +299,30 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         }
       }
     } catch (e) {
-      //console.log("  Error fetching parachain slot lease info:", e.toString());
+      console.error("  Error fetching parachain slot lease info:", e.toString());
+    }
+    try {
+      const leases = await api.query.AhOps.RcLeaseReserve.getEntries();
+      for (const {keyArgs, value} of leases) {
+        const [blocknr, paraId, account] = keyArgs;
+        if (account.toString() !== address) continue;
+        const maxLocks = value
+        if (maxLocks > 0n) {
+          const leaseDeposit = new Balance(maxLocks, decimals, symbol);
+          console.log(`  Slot lease for para ${keyArgs.toString()} with deposit: ${leaseDeposit.toString()}`);
+          storeBalance([symbol,chain,"reservedReason", `leases(${keyArgs.toString()})`, address], leaseDeposit);
+          reservedMismatch -= leaseDeposit.decimalValue();
+        }
+      }
+    } catch (e) {
+      console.error("  Error fetching parachain ahOps slot lease info:", e.toString());
     }
     try {
       const channels = await api.query.Hrmp.HrmpChannels.getEntries();
       // TODO: we can't easily find hrmp channels for sovereign accounts
       //  because they're only referenced by ParaId
     } catch (e) {
-      //console.log("  Error fetching parachain slot lease info:", e.toString());
+      console.error("  Error fetching parachain slot lease info:", e.toString());
     }
     try {
       const assets = await api.query.Uniques.Class.getEntries();
