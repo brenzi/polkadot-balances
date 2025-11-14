@@ -191,14 +191,14 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         const stakingLedger = await api.query.Staking.Ledger.getValue(controller.toString());
         if (stakingLedger && stakingLedger.active) {
           let staked = new Balance(stakingLedger.active, decimals, symbol);
-          staked.label="bonded for staking";
+          staked.label = "bonded for staking";
           console.log(`  Staked: ${staked.toString()} (controller: ${controller.toString()})`);
           reservedByStaking = staked.decimalValue()
-          storeBalance([symbol,chain,address,"reserved"], staked);
+          storeBalance([symbol, chain, address, "reserved"], staked);
         }
       }
     } catch (e) {
-      console.error("  Error fetching staking info:", e.toString());
+      console.warn("  Error fetching staking info:", e.toString());
     }
     try {
       const poolMember = await api.query.NominationPools.PoolMembers.getValue(address);
@@ -209,18 +209,18 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
       }
       //TODO: pending claims on pool rewards are not yet counted towards total balance here
     } catch (e) {
-      console.error("  Error fetching nomination pool info:", e.toString());
+      console.warn("  Error fetching nomination pool info:", e.toString());
     }
     try {
       const proxies = await api.query.Proxy.Proxies.getValue(address);
       if (proxies && proxies.length > 0 && proxies[1] > 0n) {
         const proxyDeposit = new Balance(proxies[1], decimals, symbol)
         console.log(`  Has Proxies with total deposit of: ${proxyDeposit.toString()}`);
-        storeBalance([symbol,chain,"reservedReason", "proxy", address], proxyDeposit);
+        storeBalance([symbol, chain, "reservedReason", "proxy", address], proxyDeposit);
         reservedMismatch -= proxyDeposit.decimalValue();
       }
     } catch (e) {
-      console.error("  Error fetching proxy info:", e.toString());
+      console.warn("  Error fetching proxy info:", e.toString());
     }
     // if (api.query.Multisig) {
     //   // fetch pending multisigs with deposit
@@ -237,13 +237,13 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
           if (value.value.ticket[0].toString() === address) {
             const preimageDeposit = new Balance(value.value.ticket[1], decimals, symbol);
             console.log(`  Has unrequested preimage with deposit: ${preimageDeposit.toString()}`);
-            storeBalance([symbol,chain,"reservedReason", `preimage(${keyArgs.toString()})`, address], preimageDeposit);
+            storeBalance([symbol, chain, "reservedReason", `preimage(${keyArgs.toString()})`, address], preimageDeposit);
             reservedMismatch -= preimageDeposit.decimalValue();
           }
         }
       }
     } catch (e) {
-      console.error("  Error fetching preimage info:", e.toString());
+      console.warn("  Error fetching preimage info:", e.toString());
     }
     try {
       const locks = await api.query.ConvictionVoting.ClassLocksFor.getValue(address);
@@ -251,11 +251,11 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         const maxLock = locks.reduce((max: any, lock: any) => (Number(lock[1]) > Number(max[1]) ? lock : max), locks[0]);
         const maxLockAmount = new Balance(maxLock[1], decimals, symbol);
         console.log(`  Max lock in Conviction Voting: ${maxLockAmount.toString()} (class: ${maxLock[0]})`);
-        storeBalance([symbol,chain,"reservedReason", "convictionVoting", address], maxLockAmount);
+        storeBalance([symbol, chain, "reservedReason", "convictionVoting", address], maxLockAmount);
         reservedMismatch -= maxLockAmount.decimalValue();
       }
     } catch (e) {
-      console.error("  Error fetching conviction voting info:", e.toString());
+      console.warn("  Error fetching conviction voting info:", e.toString());
     }
     try {
       const referenda = await api.query.Referenda.ReferendumInfoFor.getEntries();
@@ -264,12 +264,12 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         if (value.value[1]?.amount && value.value[1].who?.toString() === address) {
           const referendumDeposit = new Balance(value.value[1].amount, decimals, symbol);
           console.log(`  Referendum ${keyArgs.toString()} created by this account with deposit: ${referendumDeposit.toString()} and status: ${value.type}`);
-          storeBalance([symbol,chain,"reservedReason", `referendum(${keyArgs.toString()})`, address], referendumDeposit);
+          storeBalance([symbol, chain, "reservedReason", `referendum(${keyArgs.toString()})`, address], referendumDeposit);
           reservedMismatch -= referendumDeposit.decimalValue();
         }
       }
     } catch (e) {
-      console.error("  Error fetching referendum info:", e.toString());
+      console.warn("  Error fetching referendum info:", e.toString());
     }
     try {
       const paras = await api.query.Registrar.Paras.getEntries();
@@ -277,12 +277,12 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         if (value.manager?.toString() === address) {
           const paraDeposit = new Balance(value.deposit, decimals, symbol);
           console.log(`  Para ${keyArgs.toString()} managed by this account with deposit: ${paraDeposit.toString()}`);
-          storeBalance([symbol,chain,"reservedReason", `paras(${keyArgs.toString()})`, address], paraDeposit);
+          storeBalance([symbol, chain, "reservedReason", `paras(${keyArgs.toString()})`, address], paraDeposit);
           reservedMismatch -= paraDeposit.decimalValue();
         }
       }
     } catch (e) {
-      console.error("  Error fetching parachain registrar info:", e.toString());
+      console.warn("  Error fetching parachain registrar info:", e.toString());
     }
     try {
       const leases = await api.query.Slots.Leases.getEntries();
@@ -294,12 +294,12 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         if (maxLocks > 0n) {
           const leaseDeposit = new Balance(maxLocks, decimals, symbol);
           console.log(`  Slot lease for para ${keyArgs.toString()} with deposit: ${leaseDeposit.toString()}`);
-          storeBalance([symbol,chain,"reservedReason", `leases(${keyArgs.toString()})`, address], leaseDeposit);
+          storeBalance([symbol, chain, "reservedReason", `leases(${keyArgs.toString()})`, address], leaseDeposit);
           reservedMismatch -= leaseDeposit.decimalValue();
         }
       }
     } catch (e) {
-      console.error("  Error fetching parachain slot lease info:", e.toString());
+      console.warn("  Error fetching parachain slot lease info:", e.toString());
     }
     try {
       const leases = await api.query.AhOps.RcLeaseReserve.getEntries();
@@ -310,19 +310,19 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         if (maxLocks > 0n) {
           const leaseDeposit = new Balance(maxLocks, decimals, symbol);
           console.log(`  Slot lease for para ${keyArgs.toString()} with deposit: ${leaseDeposit.toString()}`);
-          storeBalance([symbol,chain,"reservedReason", `leases(${keyArgs.toString()})`, address], leaseDeposit);
+          storeBalance([symbol, chain, "reservedReason", `leases(${keyArgs.toString()})`, address], leaseDeposit);
           reservedMismatch -= leaseDeposit.decimalValue();
         }
       }
     } catch (e) {
-      console.error("  Error fetching parachain ahOps slot lease info:", e.toString());
+      console.warn("  Error fetching parachain ahOps slot lease info:", e.toString());
     }
     try {
       const channels = await api.query.Hrmp.HrmpChannels.getEntries();
       // TODO: we can't easily find hrmp channels for sovereign accounts
       //  because they're only referenced by ParaId
     } catch (e) {
-      console.error("  Error fetching parachain slot lease info:", e.toString());
+      console.warn("  Error fetching parachain slot lease info:", e.toString());
     }
     try {
       const assets = await api.query.Uniques.Class.getEntries();
@@ -332,93 +332,95 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         if (value.owner === address) {
           const totalDeposit = new Balance(value.total_deposit, decimals, symbol);
           console.log(`  Uniques class ${classId}: ${totalDeposit.toString()}`);
-          storeBalance([symbol,chain,"reservedReason", `uniques(${classId})`, address], totalDeposit);
+          storeBalance([symbol, chain, "reservedReason", `uniques(${classId})`, address], totalDeposit);
           reservedMismatch -= totalDeposit.decimalValue();
         }
       }
     } catch (e) {
-      console.error("  Error fetching uniques info:", e.toString());
+      console.warn("  Error fetching uniques info:", e.toString());
     }
-    try {
-      const assets = await api.query.Assets.Metadata.getEntries();
-      for (const {keyArgs, value} of assets) {
-        const assetId = Number(keyArgs[0]);
-        //console.log(`  Checking Asset ID ${assetId}`, value);
-        if (!value) continue;
-        const assetSymbol = value.symbol.asText();
-        const assetDecimals = Number(value.decimals);
-        const assetBalance = await api.query.Assets.Account.getValue(assetId, address);
-        if (assetBalance && assetBalance.balance > 0n) {
-          const balance = new Balance(assetBalance.balance, assetDecimals, assetSymbol);
-          storeBalance([assetSymbol,chain,address,"free"], balance);
-          console.log(`  Asset ${assetId} (${assetSymbol}): ${balance.toString()}`);
-        }
-      }
-    } catch (e) {
-      console.error("  Error fetching assets info:", e.toString());
-    }
-    try {
-      const assets = await api.query.ForeignAssets.Metadata.getEntries();
-      for (const {keyArgs, value} of assets) {
-        const assetId = keyArgs[0];
-        if (!value) continue;
-        const assetSymbol = value.symbol.asText();
-        const assetDecimals = Number(value.decimals);
-        const assetBalance = await api.query.ForeignAssets.Account.getValue(assetId, address);
-        if (assetBalance && assetBalance.balance > 0n) {
-          const balance = new Balance(assetBalance.balance, assetDecimals, assetSymbol);
-          storeBalance([assetSymbol,chain,address,"free"], balance);
-          console.log(`  ForeignAsset (${assetSymbol}): ${balance.toString()}`);
-        }
-      }
-    } catch (e) {
-      console.error("  Error fetching assets info:", e.toString());
-    }
-    try {
-      const assets = await api.query.AssetConversion.Pools.getEntries();
-      for (const {keyArgs, value} of assets) {
-        const [assetId1, assetId2] = keyArgs[0];
-        const poolAssetId = Number(value)
-        //console.log(`  Found AssetConversion pool for assets ${assetId1} and ${assetId2} with LP token asset ID ${poolAssetId}`);
-        const liq = await api.query.PoolAssets.Account.getValue(poolAssetId, address);
-        if (liq && liq.balance > 0n) {
-          const poolAsset = await api.query.PoolAssets.Asset.getValue(poolAssetId);
-          const liqTotal = poolAsset?.supply ?? 0n;
-          const poolShare = Number(liq.balance) / Number(liqTotal);
-          const poolMeta1 = await api.query.ForeignAssets.Metadata.getValue(assetId1);
-          const poolMeta2 = await api.query.ForeignAssets.Metadata.getValue(assetId2);
-          const assetSymbol1 = safeStringify(assetId1) === safeStringify(RELAY_NATIVE_FROM_PARACHAINS) ? symbol : poolMeta1.symbol.asText();
-          const assetSymbol2 = safeStringify(assetId2) === safeStringify(RELAY_NATIVE_FROM_PARACHAINS) ? symbol : poolMeta2.symbol.asText();
-          const assetDecimals1 = safeStringify(assetId1) === safeStringify(RELAY_NATIVE_FROM_PARACHAINS) ? decimals : Number(poolMeta1.decimals);
-          const assetDecimals2 = safeStringify(assetId2) === safeStringify(RELAY_NATIVE_FROM_PARACHAINS) ? decimals : Number(poolMeta2.decimals);
-          console.log(`    User has liquidity tokens: ${poolShare} of pool of ${assetSymbol1} and ${assetSymbol2}`);
-          //console.log(`    Pool Asset1 (${assetDecimals1}) location:`, safeStringify(assetId1));
-          //console.log(`    Pool Asset2 (${assetDecimals2}) location:`, safeStringify(assetId2));
-          try {
-            const reserves = await api.apis.AssetConversionApi.get_reserves(assetId1, assetId2);
-            //console.log(`    Pool reserves: ${reserves[0]} ${assetSymbol1}, ${reserves[1]} ${assetSymbol2}`);
-            const userAmount1 = new Balance(BigInt(Math.round(poolShare * Number(reserves[0]))), assetDecimals1, assetSymbol1);
-            const userAmount2 = new Balance(BigInt(Math.round(poolShare * Number(reserves[1]))), assetDecimals2, assetSymbol2);
-            console.log(`    Corresponding to underlying assets: ${userAmount1.toString()} and ${userAmount2.toString()}`);
-            storeBalance([assetSymbol1,chain,"pool",`LP(${assetSymbol2}/${assetSymbol1})`,address], userAmount1);
-            storeBalance([assetSymbol2,chain,"pool",`LP(${assetSymbol2}/${assetSymbol1})`,address], userAmount2);
-          } catch (e) {
-            console.error("    Error fetching pool reserves:", e.toString());
-          }
-        }
-      }
-    } catch (e) {
-      console.error("  Error fetching pool assets info:", e.toString());
-    }
-    // TODO: collatorSelection,
-    //  nfts, hrmp, alliance, society, bounties, child_bounties,
-    //  identity, indices, recovery
-    //console.log(reservedByStaking, reserved.decimalValue(), reservedMismatch);
     if ((reservedByStaking < reserved.decimalValue() + 0.000001) && (reservedMismatch > 0.000001)) {
       console.log(`  !!! Mismatch in reserved balance accounting: ${reservedMismatch} ${symbol}`);
       storeBalance([symbol,chain,"reservedReason", `unknown`, address], new Balance(BigInt(Math.round(reservedMismatch * 10 ** decimals)), decimals, symbol));
     }
+
   }
+  try {
+    const assets = await api.query.Assets.Metadata.getEntries();
+    for (const {keyArgs, value} of assets) {
+      const assetId = Number(keyArgs[0]);
+      //console.log(`  Checking Asset ID ${assetId}`, value);
+      if (!value) continue;
+      const assetSymbol = value.symbol.asText();
+      const assetDecimals = Number(value.decimals);
+      const assetBalance = await api.query.Assets.Account.getValue(assetId, address);
+      if (assetBalance && assetBalance.balance > 0n) {
+        const balance = new Balance(assetBalance.balance, assetDecimals, assetSymbol);
+        storeBalance([assetSymbol,chain,address,"free"], balance);
+        console.log(`  Asset ${assetId} (${assetSymbol}): ${balance.toString()}`);
+      }
+    }
+  } catch (e) {
+    console.warn("  Error fetching assets info:", e.toString());
+  }
+  try {
+    const assets = await api.query.ForeignAssets.Metadata.getEntries();
+    for (const {keyArgs, value} of assets) {
+      const assetId = keyArgs[0];
+      if (!value) continue;
+      const assetSymbol = value.symbol.asText();
+      const assetDecimals = Number(value.decimals);
+      const assetBalance = await api.query.ForeignAssets.Account.getValue(assetId, address);
+      if (assetBalance && assetBalance.balance > 0n) {
+        const balance = new Balance(assetBalance.balance, assetDecimals, assetSymbol);
+        storeBalance([assetSymbol,chain,address,"free"], balance);
+        console.log(`  ForeignAsset (${assetSymbol}): ${balance.toString()}`);
+      }
+    }
+  } catch (e) {
+    console.warn("  Error fetching foreign assets info:", e.toString());
+  }
+  try {
+    const assets = await api.query.AssetConversion.Pools.getEntries();
+    for (const {keyArgs, value} of assets) {
+      const [assetId1, assetId2] = keyArgs[0];
+      const poolAssetId = Number(value)
+      //console.log(`  Found AssetConversion pool for assets ${assetId1} and ${assetId2} with LP token asset ID ${poolAssetId}`);
+      const liq = await api.query.PoolAssets.Account.getValue(poolAssetId, address);
+      if (liq && liq.balance > 0n) {
+        const poolAsset = await api.query.PoolAssets.Asset.getValue(poolAssetId);
+        const liqTotal = poolAsset?.supply ?? 0n;
+        const poolShare = Number(liq.balance) / Number(liqTotal);
+        const poolMeta1 = await api.query.ForeignAssets.Metadata.getValue(assetId1);
+        const poolMeta2 = await api.query.ForeignAssets.Metadata.getValue(assetId2);
+        const assetSymbol1 = safeStringify(assetId1) === safeStringify(RELAY_NATIVE_FROM_PARACHAINS) ? symbol : poolMeta1.symbol.asText();
+        const assetSymbol2 = safeStringify(assetId2) === safeStringify(RELAY_NATIVE_FROM_PARACHAINS) ? symbol : poolMeta2.symbol.asText();
+        const assetDecimals1 = safeStringify(assetId1) === safeStringify(RELAY_NATIVE_FROM_PARACHAINS) ? decimals : Number(poolMeta1.decimals);
+        const assetDecimals2 = safeStringify(assetId2) === safeStringify(RELAY_NATIVE_FROM_PARACHAINS) ? decimals : Number(poolMeta2.decimals);
+        console.log(`    User has liquidity tokens: ${poolShare} of pool of ${assetSymbol1} and ${assetSymbol2}`);
+        //console.log(`    Pool Asset1 (${assetDecimals1}) location:`, safeStringify(assetId1));
+        //console.log(`    Pool Asset2 (${assetDecimals2}) location:`, safeStringify(assetId2));
+        try {
+          const reserves = await api.apis.AssetConversionApi.get_reserves(assetId1, assetId2);
+          //console.log(`    Pool reserves: ${reserves[0]} ${assetSymbol1}, ${reserves[1]} ${assetSymbol2}`);
+          const userAmount1 = new Balance(BigInt(Math.round(poolShare * Number(reserves[0]))), assetDecimals1, assetSymbol1);
+          const userAmount2 = new Balance(BigInt(Math.round(poolShare * Number(reserves[1]))), assetDecimals2, assetSymbol2);
+          console.log(`    Corresponding to underlying assets: ${userAmount1.toString()} and ${userAmount2.toString()}`);
+          storeBalance([assetSymbol1,chain,"pool",`LP(${assetSymbol2}/${assetSymbol1})`,address], userAmount1);
+          storeBalance([assetSymbol2,chain,"pool",`LP(${assetSymbol2}/${assetSymbol1})`,address], userAmount2);
+        } catch (e) {
+          console.warn("    Error fetching pool reserves:", e.toString());
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("  Error fetching pool assets info:", e.toString());
+  }
+  // TODO: collatorSelection,
+  //  nfts, hrmp, alliance, society, bounties, child_bounties,
+  //  identity, indices, recovery
+  //console.log(reservedByStaking, reserved.decimalValue(), reservedMismatch);
+
   return `${free} ${symbol} (reserved: ${reserved} ${symbol}, miscFrozen: ${miscFrozen} ${symbol}, feeFrozen: ${feeFrozen} ${symbol})`
 }
 
