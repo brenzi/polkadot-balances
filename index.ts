@@ -120,10 +120,14 @@ async function main() {
       await getBalancesForAddressOnChain(kctClient, kctApi, account.Address);
       console.log("---- on KPL ----");
       await getBalancesForAddressOnChain(kplClient, kplApi, account.Address);
-      console.log("---- on ITK ----");
-      await getBalancesForAddressOnChain(itkClient, itkApi, account.Address);
-      console.log("---- on ITP ----");
-      await getBalancesForAddressOnChain(itpClient, itpApi, account.Address);
+      console.log("---- on Encointer ----");
+      await getBalancesForAddressOnChain(encClient, encApi, account.Address);
+
+      // DEPRECATED
+      // console.log("---- on ITK ----");
+      // await getBalancesForAddressOnChain(itkClient, itkApi, account.Address);
+      // console.log("---- on ITP ----");
+      // await getBalancesForAddressOnChain(itpClient, itpApi, account.Address);
     }
   }
 
@@ -200,17 +204,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
     } catch (e) {
       console.warn("  Error fetching staking info:", e.toString());
     }
-    try {
-      const poolMember = await api.query.NominationPools.PoolMembers.getValue(address);
-      if (poolMember && poolMember.points) {
-        const points = new Balance(poolMember.points, decimals, symbol);
-        console.log(`  In Nomination Pool: ${points.toString()}`);
-        reservedMismatch -= points.decimalValue();
-      }
-      //TODO: pending claims on pool rewards are not yet counted towards total balance here
-    } catch (e) {
-      console.warn("  Error fetching nomination pool info:", e.toString());
-    }
+
     try {
       const proxies = await api.query.Proxy.Proxies.getValue(address);
       if (proxies && proxies.length > 0 && proxies[1] > 0n) {
@@ -261,11 +255,28 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
       const referenda = await api.query.Referenda.ReferendumInfoFor.getEntries();
       for (const {keyArgs, value} of referenda) {
         //console.log(keyArgs.toString(), value);
-        if (value.value[1]?.amount && value.value[1].who?.toString() === address) {
+        if (( value.type === "Rejected" || value.type === "TimedOut") && (value.value[1]?.amount && value.value[1].who?.toString() === address)) {
           const referendumDeposit = new Balance(value.value[1].amount, decimals, symbol);
           console.log(`  Referendum ${keyArgs.toString()} created by this account with deposit: ${referendumDeposit.toString()} and status: ${value.type}`);
-          storeBalance([symbol, chain, "reservedReason", `referendum(${keyArgs.toString()})`, address], referendumDeposit);
+          storeBalance([symbol, chain, "reservedReason", `referendumSubmission(${keyArgs.toString()})`, address], referendumDeposit);
           reservedMismatch -= referendumDeposit.decimalValue();
+        }
+        if (value.type === "Ongoing") {
+          // console.log(`  Referendum ${keyArgs.toString()} is ongoing:`, value);
+          const submissionDeposit = value.value.submission_deposit;
+          const decisionDeposit = value.value.decision_deposit;
+          if (submissionDeposit?.who?.toString() === address) {
+            const referendumDeposit = new Balance(submissionDeposit.amount, decimals, symbol);
+            console.log(`  Referendum ${keyArgs.toString()} created by this account with deposit: ${referendumDeposit.toString()} and status: ${value.type}`);
+            storeBalance([symbol, chain, "reservedReason", `referendumSubmission(${keyArgs.toString()})`, address], referendumDeposit);
+            reservedMismatch -= referendumDeposit.decimalValue();
+          }
+          if (decisionDeposit?.who?.toString() === address) {
+            const referendumDeposit = new Balance(decisionDeposit.amount, decimals, symbol);
+            console.log(`  Referendum ${keyArgs.toString()} decision deposit by this account with deposit: ${referendumDeposit.toString()} and status: ${value.type}`);
+            storeBalance([symbol, chain, "reservedReason", `referendumDecision(${keyArgs.toString()})`, address], referendumDeposit);
+            reservedMismatch -= referendumDeposit.decimalValue();
+          }
         }
       }
     } catch (e) {
@@ -344,6 +355,19 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
       storeBalance([symbol,chain,"reservedReason", `unknown`, address], new Balance(BigInt(Math.round(reservedMismatch * 10 ** decimals)), decimals, symbol));
     }
 
+  }
+  try {
+    const poolMember = await api.query.NominationPools.PoolMembers.getValue(address);
+    if (poolMember && poolMember.points) {
+      const poolId = Number(poolMember.pool_id);
+      //console.log(`  Is member of Nomination Pool ID ${poolId}`, poolMember);
+      const points = new Balance(poolMember.points, decimals, symbol);
+      console.log(`  In Nomination Pool ${poolId}: ${points.toString()}`);
+      storeBalance([symbol,chain,`nominationPool`, `poolId ${poolId}`, address], points);
+    }
+    //TODO: pending claims on pool rewards are not yet counted towards total balance here
+  } catch (e) {
+    console.warn("  Error fetching nomination pool info:", e.toString());
   }
   try {
     const assets = await api.query.Assets.Metadata.getEntries();
@@ -547,7 +571,25 @@ function balanceRecordToSheets(
       } catch (e) {
         // no reserved reasons
       }
-
+      try {
+        const pools = Object.keys(balances[token][chain]["nominationPool"]);
+        console.log("nominationPools:", pools);
+        for (const pool of pools) {
+          transferability = `nominationPool ${pool}`;
+          rows.push([
+            chain,
+            transferability,
+            ...accountsList.map(acc => {
+              const accountBalances = balances[token][chain]["nominationPool"];
+              const bal = accountBalances ? accountBalances[pool]?.[acc.Address] : undefined;
+              return bal?.decimalValue() ?? "";
+            })
+          ]);
+          reservedRows.push(rows.length);
+        }
+      } catch (e) {
+        // no nomination pools
+      }
       try {
         const pools = Object.keys(balances[token][chain]["pool"]);
         console.log("pools:", pools);
