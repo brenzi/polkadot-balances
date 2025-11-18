@@ -350,24 +350,31 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
     } catch (e) {
       console.warn("  Error fetching uniques info:", e.toString());
     }
+    try {
+      // technically, nomination pool transfers funds to a different account,
+      // but from the user's perspective, those funds are still "reserved" and users can use them to vote.
+      const poolMember = await api.query.NominationPools.PoolMembers.getValue(address);
+      if (poolMember && poolMember.points) {
+        const poolId = Number(poolMember.pool_id);
+        const points = new Balance(poolMember.points, decimals, symbol);
+        console.log(`  In Nomination Pool ${poolId}: ${points.toString()}`);
+        storeBalance([symbol,chain,`reservedReason`, `nominationPool(${poolId})`, address], points);
+        reservedMismatch -= points.decimalValue();
+        // claimable rewards do not count towards reserved nor free balance of this account. list separately
+        const claimable = await api.apis.NominationPoolsApi.pending_rewards(address);
+        if (claimable > 0n) {
+          const claimableBalance = new Balance(claimable, decimals, symbol);
+          console.log(`    Pending claimable rewards: ${claimableBalance.toString()}`);
+          storeBalance([symbol, chain, `nominationPool`, `pendingRewards(${poolId})`, address], claimableBalance);
+        }
+      }
+    } catch (e) {
+      console.warn("  Error fetching nomination pool info:", e.toString());
+    }
     if ((reservedByStaking < reserved.decimalValue() + 0.000001) && (reservedMismatch > 0.000001)) {
       console.log(`  !!! Mismatch in reserved balance accounting: ${reservedMismatch} ${symbol}`);
       storeBalance([symbol,chain,"reservedReason", `unknown`, address], new Balance(BigInt(Math.round(reservedMismatch * 10 ** decimals)), decimals, symbol));
     }
-
-  }
-  try {
-    const poolMember = await api.query.NominationPools.PoolMembers.getValue(address);
-    if (poolMember && poolMember.points) {
-      const poolId = Number(poolMember.pool_id);
-      //console.log(`  Is member of Nomination Pool ID ${poolId}`, poolMember);
-      const points = new Balance(poolMember.points, decimals, symbol);
-      console.log(`  In Nomination Pool ${poolId}: ${points.toString()}`);
-      storeBalance([symbol,chain,`nominationPool`, `poolId ${poolId}`, address], points);
-    }
-    //TODO: pending claims on pool rewards are not yet counted towards total balance here
-  } catch (e) {
-    console.warn("  Error fetching nomination pool info:", e.toString());
   }
   try {
     const assets = await api.query.Assets.Metadata.getEntries();
