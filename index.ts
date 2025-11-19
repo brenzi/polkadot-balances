@@ -173,6 +173,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
   const decimals = Number(spec.properties.tokenDecimals);
   const chain = spec.name;
   const symbol = spec.properties.tokenSymbol?.toString() || "UNIT";
+  const ed = new Balance(await api.constants.Balances.ExistentialDeposit(), decimals, symbol);
 
   const accountInfo = await api.query.System.Account.getValue(address);
   if (!accountInfo) {
@@ -180,14 +181,35 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
   }
   const { data: balance } = accountInfo;
   const reserved = new Balance(balance.reserved, decimals, symbol);
+  const frozen = new Balance(balance.frozen, decimals, symbol);
   const free = new Balance(balance.free, decimals, symbol);
+  // we omit ED here because it would lead to a mismatch in summing up
+  const transferable = new Balance(balance.free - maxBigInt(0n, balance.frozen - balance.reserved), decimals, symbol);
+  const fullBalance = free.add(reserved);
   storeBalance([symbol,chain,address,"free"], free);
+  storeBalance([symbol,chain,address,"frozen"], frozen);
   storeBalance([symbol,chain,address,"reserved"], reserved);
+  storeBalance([symbol,chain,address,"transferable"], transferable);
+  storeBalance([symbol,chain,address,"fullBalance"], fullBalance);
   const miscFrozen = new Balance(balance.miscFrozen ?? 0n, decimals, symbol);
   const feeFrozen = new Balance(balance.feeFrozen ?? 0n, decimals, symbol);
-  console.log(` free: ${free.toString()} reserved: ${reserved.toString()} miscFrozen: ${miscFrozen.toString()} feeFrozen: ${feeFrozen.toString()}`);
+  console.log(` transferable: ${transferable.toString()} full on-account balance ${fullBalance.toString()} | free: ${free.toString()} reserved: ${reserved.toString()} frozen: ${frozen.toString()}`);
+  if (frozen.decimalValue() > 0) {
+    try {
+      const locks = await api.query.ConvictionVoting.ClassLocksFor.getValue(address);
+      if (locks && locks.length > 0) {
+        const maxLock = locks.reduce((max: any, lock: any) => (Number(lock[1]) > Number(max[1]) ? lock : max), locks[0]);
+        const maxLockAmount = new Balance(maxLock[1], decimals, symbol);
+        console.log(`  Max lock in Conviction Voting: ${maxLockAmount.toString()} (class: ${maxLock[0]})`);
+        storeBalance([symbol, chain, "frozenReason", `convictionVoting(class ${maxLock[0]})`, address], maxLockAmount);
+      }
+    } catch (e) {
+      console.warn("  Error fetching conviction voting info:", e.toString());
+    }
+  }
   if (reserved.decimalValue() > 0) {
     let reservedMismatch = reserved.decimalValue();
+    let maxFreeze = 0;
     let reservedByStaking = 0;
     try {
       const controller = await api.query.Staking.Bonded.getValue(address);
@@ -195,10 +217,18 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
         const stakingLedger = await api.query.Staking.Ledger.getValue(controller.toString());
         if (stakingLedger && stakingLedger.active) {
           let staked = new Balance(stakingLedger.active, decimals, symbol);
+          let unbonding = new Balance(stakingLedger.unlocking.reduce(
+            (sum: bigint, entry: any) => sum + BigInt(entry.value), 0n
+          ), decimals, symbol)
+          reservedByStaking = staked.decimalValue() + unbonding.decimalValue();
           staked.label = "bonded for staking";
           console.log(`  Staked: ${staked.toString()} (controller: ${controller.toString()})`);
-          reservedByStaking = staked.decimalValue()
-          storeBalance([symbol, chain, address, "reserved"], staked);
+          storeBalance([symbol, chain, "reservedReason", "staking", address], staked);
+          if (unbonding.decimalValue() > 0) {
+            unbonding.label = "unbonding from staking";
+            storeBalance([symbol, chain, "reservedReason", "unbonding", address], unbonding);
+            console.log(`  Unbonding: ${unbonding.toString()}`);
+          }
         }
       }
     } catch (e) {
@@ -238,18 +268,6 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
       }
     } catch (e) {
       console.warn("  Error fetching preimage info:", e.toString());
-    }
-    try {
-      const locks = await api.query.ConvictionVoting.ClassLocksFor.getValue(address);
-      if (locks && locks.length > 0) {
-        const maxLock = locks.reduce((max: any, lock: any) => (Number(lock[1]) > Number(max[1]) ? lock : max), locks[0]);
-        const maxLockAmount = new Balance(maxLock[1], decimals, symbol);
-        console.log(`  Max lock in Conviction Voting: ${maxLockAmount.toString()} (class: ${maxLock[0]})`);
-        storeBalance([symbol, chain, "reservedReason", "convictionVoting", address], maxLockAmount);
-        reservedMismatch -= maxLockAmount.decimalValue();
-      }
-    } catch (e) {
-      console.warn("  Error fetching conviction voting info:", e.toString());
     }
     try {
       const referenda = await api.query.Referenda.ReferendumInfoFor.getEntries();
@@ -371,7 +389,9 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
     } catch (e) {
       console.warn("  Error fetching nomination pool info:", e.toString());
     }
-    if ((reservedByStaking < reserved.decimalValue() + 0.000001) && (reservedMismatch > 0.000001)) {
+    reservedMismatch -= reservedByStaking;
+    console.log(`  Reserved by staking: ${reservedByStaking} ${symbol}, total reserved: ${reserved.decimalValue()} ${symbol}, mismatch: ${reservedMismatch} ${symbol}, ED: ${ed.toString()}`);
+    if (reservedMismatch > ed.decimalValue()) {
       console.log(`  !!! Mismatch in reserved balance accounting: ${reservedMismatch} ${symbol}`);
       storeBalance([symbol,chain,"reservedReason", `unknown`, address], new Balance(BigInt(Math.round(reservedMismatch * 10 ** decimals)), decimals, symbol));
     }
@@ -474,6 +494,20 @@ class Balance {
   toString(): string {
     return `${this.decimalValue()} ${this.symbol}`;
   }
+
+  add(other: Balance): Balance {
+    if (this.decimals !== other.decimals || this.symbol !== other.symbol) {
+      throw new Error("Cannot add balances with different decimals or symbols");
+    }
+    return new Balance(this.raw + other.raw, this.decimals, this.symbol);
+  }
+
+  sub(other: Balance): Balance {
+    if (this.decimals !== other.decimals || this.symbol !== other.symbol) {
+      throw new Error("Cannot subtract balances with different decimals or symbols");
+    }
+    return new Balance(this.raw - other.raw, this.decimals, this.symbol);
+  }
 }
 
 // token, chain, address, transferrability
@@ -509,12 +543,14 @@ function balanceRecordToSheets(
       ...accountsList.map(acc => acc.Controller)
     ]);
 
-
-    const freeRows: number[] = [];
+    const fullBalanceRows: number[] = [];
+    const transferableRows: number[] = [];
     const poolRows: number[] = [];
+    const frozenRows: number[] = [];
     const reservedRows: number[] = [];
     for (const chain in balances[token]) {
-      let transferability = "free"
+      // FULL BALANCES
+      let transferability = "fullBalance"
       rows.push([
         chain,
         transferability,
@@ -524,17 +560,53 @@ function balanceRecordToSheets(
           return bal?.decimalValue() ?? "";
         })
       ]);
-      freeRows.push(rows.length); // 1-based for Excel
+      fullBalanceRows.push(rows.length); // 1-based for Excel
+      // TRANSFERABLE BALANCES
+      transferability = "transferable"
+      rows.push([
+        chain,
+        transferability,
+        ...accountsList.map(acc => {
+          const accountBalances = balances[token][chain][acc.Address];
+          const bal = accountBalances ? accountBalances[transferability] : undefined;
+          return bal?.decimalValue() ?? "";
+        })
+      ]);
+      transferableRows.push(rows.length); // 1-based for Excel
 
-      transferability = "reserved"
-      // Collect all labels for this transferability
-      const labelSet = new Set<string>();
-      for (const address of accountsList.map(acc => acc.Address)) {
-        const accountBalances = balances[token][chain][address];
-        const bal = accountBalances ? accountBalances[transferability] : undefined;
-        if (bal?.label) labelSet.add(bal.label);
+      // FROZEN BALANCES
+      transferability = "frozen"
+      // Add row for frozen limit (no label)
+      rows.push([
+        chain,
+        transferability + " total",
+        ...accountsList.map(acc => {
+          const accountBalances = balances[token][chain][acc.Address];
+          const bal = accountBalances ? accountBalances[transferability] : undefined;
+          return bal?.decimalValue() ?? "";
+        })
+      ]);
+      frozenRows.push(rows.length);
+      try {
+        const reasons = Object.keys(balances[token][chain]["frozenReason"]);
+        console.log("frozen reasons:", reasons);
+        for (const reason of reasons) {
+          transferability = `frozen: ${reason}`;
+          rows.push([
+            chain,
+            transferability,
+            ...accountsList.map(acc => {
+              const accountBalances = balances[token][chain]["frozenReason"];
+              const bal = accountBalances ? accountBalances[reason]?.[acc.Address] : undefined;
+              return bal?.decimalValue() ?? "";
+            })
+          ]);
+        }
+      } catch (e) {
+        // no frozen reasons
       }
-
+      // RESERVED BALANCES
+      transferability = "reserved"
       // Add row for transferability (no label)
       rows.push([
         chain,
@@ -547,19 +619,6 @@ function balanceRecordToSheets(
       ]);
       reservedRows.push(rows.length);
 
-      console.log("label set:", labelSet);
-      // Add rows for each label
-      for (const label of labelSet) {
-        rows.push([
-          chain,
-          `${transferability} (${label})`,
-          ...accountsList.map(acc => {
-            const accountBalances = balances[token][chain][acc.Address];
-            const bal = accountBalances ? accountBalances[transferability] : undefined;
-            return bal?.label === label ? bal.decimalValue() : "";
-          })
-        ]);
-      }
       try {
         const reasons = Object.keys(balances[token][chain]["reservedReason"]);
         console.log("reserved reasons:", reasons);
@@ -578,6 +637,7 @@ function balanceRecordToSheets(
       } catch (e) {
         // no reserved reasons
       }
+      // nomination Pools claimable rewards
       try {
         const pools = Object.keys(balances[token][chain]["nominationPool"]);
         console.log("nominationPools:", pools);
@@ -597,6 +657,7 @@ function balanceRecordToSheets(
       } catch (e) {
         // no nomination pools
       }
+      // DEX liquidity pools
       try {
         const pools = Object.keys(balances[token][chain]["pool"]);
         console.log("pools:", pools);
@@ -625,18 +686,28 @@ function balanceRecordToSheets(
 
     rows.push([]);
 
-    // Total free
-    const totalFreeRow = [
+    // Total transferable
+    const totalTransferableRow = [
       "",
-      "Total free",
+      "Total transferable",
       ...accountsList.map((_, i) => {
         const col = String.fromCharCode(67 + i); // D, E, F, ...
-        const sumRange = freeRows.map(r => `${col}${r}`).join(",");
+        const sumRange = transferableRows.map(r => `${col}${r}`).join(",");
         return `=SUM(${sumRange})`;
       })
     ];
-    rows.push(totalFreeRow);
-
+    rows.push(totalTransferableRow);
+    // Total frozen
+    const totalFrozenRow = [
+      "",
+      "Total frozen",
+      ...accountsList.map((_, i) => {
+        const col = String.fromCharCode(67 + i); // D, E, F, ...
+        const sumRange = frozenRows.map(r => `${col}${r}`).join(",");
+        return `=SUM(${sumRange})`;
+      })
+    ];
+    rows.push(totalFrozenRow);
     // Total reserved
     const totalReservedRow = [
       "",
@@ -648,6 +719,18 @@ function balanceRecordToSheets(
       })
     ];
     rows.push(totalReservedRow);
+    // Total on-account full
+    const totalFullRow = [
+      "",
+      "Total on-account balances",
+      ...accountsList.map((_, i) => {
+        const col = String.fromCharCode(67 + i);
+        const sumRange = fullBalanceRows.map(r => `${col}${r}`).join(",");
+        return `=SUM(${sumRange})`;
+      })
+    ];
+    rows.push(totalFullRow);
+
     // Total pooled
     const totalPoolRow = [
       "",
@@ -665,10 +748,9 @@ function balanceRecordToSheets(
       "Grand total",
       ...accountsList.map((_, i) => {
         const col = String.fromCharCode(67 + i);
-        const freeCell = `${col}${rowCount + 1}`;
-        const reservedCell = `${col}${rowCount + 2}`;
-        const poolCell = `${col}${rowCount + 3}`;
-        return `=${freeCell}+${reservedCell}+${poolCell}`;
+        const fullCell = `${col}${rowCount + 4}`;
+        const poolCell = `${col}${rowCount + 5}`;
+        return `=${fullCell}+${poolCell}`;
       })
     ];
     rows.push(grandTotalRow);
@@ -709,3 +791,5 @@ function storeBalance(path: (string | number)[], balance: Balance) {
   }
   current[path[path.length - 1]] = balance;
 }
+
+const maxBigInt = (...args: bigint[]) => args.reduce((a, b) => a > b ? a : b);
