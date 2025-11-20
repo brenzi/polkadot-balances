@@ -407,7 +407,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
       const assetBalance = await api.query.Assets.Account.getValue(assetId, address);
       if (assetBalance && assetBalance.balance > 0n) {
         const balance = new Balance(assetBalance.balance, assetDecimals, assetSymbol);
-        storeBalance([assetSymbol,chain,address,"free"], balance);
+        storeBalance([assetSymbol,chain,address,"transferable"], balance);
         console.log(`  Asset ${assetId} (${assetSymbol}): ${balance.toString()}`);
       }
     }
@@ -424,7 +424,7 @@ async function getBalancesForAddressOnChain(client: any, api: any, address: stri
       const assetBalance = await api.query.ForeignAssets.Account.getValue(assetId, address);
       if (assetBalance && assetBalance.balance > 0n) {
         const balance = new Balance(assetBalance.balance, assetDecimals, assetSymbol);
-        storeBalance([assetSymbol,chain,address,"free"], balance);
+        storeBalance([assetSymbol,chain,address,"transferable"], balance);
         console.log(`  ForeignAsset (${assetSymbol}): ${balance.toString()}`);
       }
     }
