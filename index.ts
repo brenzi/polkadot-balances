@@ -1,4 +1,4 @@
-import { dot, pah, ppl, ksm, kah, kct, kpl, enc, itp, itk } from "@polkadot-api/descriptors"
+import { dot, pah, ppl, ksm, kah, kct, kpl, enc } from "@polkadot-api/descriptors"
 import { createClient, Binary } from "polkadot-api"
 import { getWsProvider } from "polkadot-api/ws-provider/node";
 import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
@@ -13,20 +13,20 @@ import {RELAY_NATIVE_FROM_PARACHAINS} from "./constants";
 
 const dotClient = createClient(
   withPolkadotSdkCompat(
-    getWsProvider(["wss://polkadot-relay-2.api.integritee.network:443", "wss://polkadot.chainbricks.synology.me:4100"])
+    getWsProvider(["wss://polkadot.chainbricks.synology.me:4100"])
   )
 );
 const dotApi = dotClient.getTypedApi(dot)
 const ksmClient = createClient(
   withPolkadotSdkCompat(
-    getWsProvider(["wss://kusama-relay-1.api.integritee.network:443", "wss://kusama.chainbricks.synology.me:4200"])
+    getWsProvider(["wss://kusama.chainbricks.synology.me:4200"])
   )
 );
 const ksmApi = ksmClient.getTypedApi(ksm)
 
 const pahClient = createClient(
   withPolkadotSdkCompat(
-    getWsProvider(["wss://bezzera.integritee.network:4130"])
+    getWsProvider(["wss://bezzera.encointer.org:4130"])
   )
 );
 const pahApi = pahClient.getTypedApi(pah)
@@ -40,8 +40,8 @@ const pplApi = pplClient.getTypedApi(ppl)
 
 const kahClient = createClient(
   withPolkadotSdkCompat(
-    getWsProvider(["wss://bezzera.integritee.network:4230", "wss://sys.ibp.network/asset-hub-kusama"])
-    // getWsProvider(["wss://bezzera.integritee.network:4230"])
+    //getWsProvider(["wss://bezzera.encointer.org:4230", "wss://sys.ibp.network/asset-hub-kusama"])
+    getWsProvider(["wss://bezzera.encointer.org:4230"])
   )
 );
 const kahApi = kahClient.getTypedApi(kah)
@@ -67,19 +67,19 @@ const encClient = createClient(
 );
 const encApi = encClient.getTypedApi(enc)
 
-const itkClient = createClient(
-  withPolkadotSdkCompat(
-    getWsProvider(["wss://kusama.api.integritee.network"])
-  )
-);
-const itkApi = itkClient.getTypedApi(itk)
-
-const itpClient = createClient(
-  withPolkadotSdkCompat(
-    getWsProvider(["wss://polkadot.api.integritee.network"])
-  )
-);
-const itpApi = itpClient.getTypedApi(itp)
+// const itkClient = createClient(
+//   withPolkadotSdkCompat(
+//     getWsProvider(["wss://kusama.api.integritee.network"])
+//   )
+// );
+// const itkApi = itkClient.getTypedApi(itk)
+//
+// const itpClient = createClient(
+//   withPolkadotSdkCompat(
+//     getWsProvider(["wss://polkadot.api.integritee.network"])
+//   )
+// );
+// const itpApi = itpClient.getTypedApi(itp)
 
 
 
@@ -164,8 +164,8 @@ async function main() {
   await kctClient.destroy();
   await kplClient.destroy();
   await encClient.destroy();
-  await itkClient.destroy();
-  await itpClient.destroy();
+  // await itkClient.destroy();
+  // await itpClient.destroy();
 }
 
 async function getBalancesForAddressOnChain(client: any, api: any, address: string) {
