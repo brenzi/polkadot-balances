@@ -33,7 +33,7 @@ const pahApi = pahClient.getTypedApi(pah)
 
 const pplClient = createClient(
   withPolkadotSdkCompat(
-    getWsProvider(["wss://sys.ibp.network/people-polkadot"])
+    getWsProvider(["wss://people-polkadot-rpc.n.dwellir.com", "wss://sys.ibp.network/people-polkadot"])
   )
 );
 const pplApi = pplClient.getTypedApi(ppl)
@@ -48,14 +48,14 @@ const kahApi = kahClient.getTypedApi(kah)
 
 const kctClient = createClient(
   withPolkadotSdkCompat(
-    getWsProvider(["wss://sys.ibp.network/coretime-kusama"])
+    getWsProvider(["wss://sys.ibp.network/coretime-kusama","wss://coretime-kusama-rpc.n.dwellir.com"])
   )
 );
 const kctApi = kctClient.getTypedApi(kct)
 
 const kplClient = createClient(
   withPolkadotSdkCompat(
-    getWsProvider(["wss://sys.ibp.network/people-kusama"])
+    getWsProvider(["wss://sys.ibp.network/people-kusama","wss://people-kusama-rpc.n.dwellir.com"])
   )
 );
 const kplApi = kplClient.getTypedApi(kpl)
@@ -110,16 +110,16 @@ async function main() {
       await getBalancesForAddressOnChain(dotClient, dotApi, account.Address);
       console.log("---- on PAH ----");
       await getBalancesForAddressOnChain(pahClient, pahApi, account.Address);
-      console.log("---- on PPL ----");
-      await getBalancesForAddressOnChain(pplClient, pplApi, account.Address);
+      //console.log("---- on PPL ----");
+      //await getBalancesForAddressOnChain(pplClient, pplApi, account.Address);
       console.log("---- on Kusama Relaychain ----");
       await getBalancesForAddressOnChain(ksmClient, ksmApi, account.Address);
       console.log("---- on KAH ----");
       await getBalancesForAddressOnChain(kahClient, kahApi, account.Address);
-      console.log("---- on KCT ----");
-      await getBalancesForAddressOnChain(kctClient, kctApi, account.Address);
-      console.log("---- on KPL ----");
-      await getBalancesForAddressOnChain(kplClient, kplApi, account.Address);
+      //console.log("---- on KCT ----");
+      //await getBalancesForAddressOnChain(kctClient, kctApi, account.Address);
+      //console.log("---- on KPL ----");
+      //await getBalancesForAddressOnChain(kplClient, kplApi, account.Address);
       console.log("---- on Encointer ----");
       await getBalancesForAddressOnChain(encClient, encApi, account.Address);
 
