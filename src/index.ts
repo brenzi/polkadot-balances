@@ -10,12 +10,20 @@ import { balanceRecordToSheets, getColHideFlags } from "./output/sheet-layout.ts
 import { writeToGoogleSheets } from "./output/google-sheets.ts";
 import { parseDateArg, resolveBlockHashAtTimestamp, resolveBlockHashAtNumber } from "./block-at.ts";
 
+export interface RunConfig {
+  accounts: { address: string; name?: string; beneficialOwner?: string; controller?: string }[];
+  sheetId?: string;
+  credentials?: string;
+  rpcNodes?: Record<string, string[]>;
+}
+
 main();
 
 async function main() {
   const { values, positionals } = parseArgs({
     args: process.argv.slice(2),
     options: {
+      config: { type: "string" },
       at: { type: "string" },
       "at-block": { type: "string" },
       "sheet-id": { type: "string" },
@@ -24,26 +32,40 @@ async function main() {
     allowPositionals: true,
   });
 
-  const csvFilePath = positionals[0];
-  if (!csvFilePath) {
-    console.error("Usage: bun run src/index.ts <csv-file-path> [--at YYYYMMDD|YYYYMM] [--at-block NUMBER]");
-    process.exit(1);
+  let accountsList: { Address: string; Name?: string; BeneficialOwner?: string; Controller?: string }[];
+  let sheetId: string | undefined;
+  let credPath: string | undefined;
+  let rpcOverrides: Record<string, string[]> | undefined;
+
+  if (values.config) {
+    const cfg: RunConfig = JSON.parse(fs.readFileSync(values.config, "utf8"));
+    accountsList = cfg.accounts.map((a) => ({
+      Address: a.address,
+      Name: a.name,
+      BeneficialOwner: a.beneficialOwner,
+      Controller: a.controller,
+    }));
+    sheetId = cfg.sheetId;
+    credPath = cfg.credentials;
+    rpcOverrides = cfg.rpcNodes;
+  } else {
+    const csvFilePath = positionals[0];
+    if (!csvFilePath) {
+      console.error("Usage: bun run src/index.ts [--config config.json] | <csv-file-path> [--at YYYYMMDD|YYYYMM] [--at-block NUMBER]");
+      process.exit(1);
+    }
+    const csvFile = fs.readFileSync(csvFilePath, "utf8");
+    const filteredCsv = csvFile
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("#"))
+      .join("\n");
+    const parsed = Papa.parse(filteredCsv, { header: true });
+    accountsList = parsed.data as typeof accountsList;
+    sheetId = values["sheet-id"] ?? process.env.GOOGLE_SHEET_ID;
+    credPath = values.credentials ?? process.env.GOOGLE_APPLICATION_CREDENTIALS;
   }
 
-  const csvFile = fs.readFileSync(csvFilePath, "utf8");
-  const filteredCsv = csvFile
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("#"))
-    .join("\n");
-  const parsed = Papa.parse(filteredCsv, { header: true });
-  const accountsList = parsed.data as {
-    Address: string;
-    Name?: string;
-    BeneficialOwner?: string;
-    Controller?: string;
-  }[];
-
-  const runtimes = createAllClients();
+  const runtimes = createAllClients(rpcOverrides);
   const balances: BalanceRecord = {};
 
   // Resolve --at / --at-block to per-chain block hashes
@@ -105,9 +127,6 @@ async function main() {
   const { sheets, sheetMeta } = balanceRecordToSheets(balances, accountsList);
 
   // Output to Google Sheets or xlsx
-  const sheetId = values["sheet-id"] ?? process.env.GOOGLE_SHEET_ID;
-  const credPath = values.credentials ?? process.env.GOOGLE_APPLICATION_CREDENTIALS;
-
   if (sheetId) {
     if (!credPath) {
       console.error("--credentials or GOOGLE_APPLICATION_CREDENTIALS required when using --sheet-id");
@@ -115,7 +134,8 @@ async function main() {
     }
     await writeToGoogleSheets({ sheetId, credentialsPath: credPath }, sheets, sheetMeta);
   } else {
-    const { dir, name } = path.parse(csvFilePath);
+    const basePath = values.config ?? positionals[0]!;
+    const { dir, name } = path.parse(basePath);
     const outputFile = path.join(dir, `${name}-balances.xlsx`);
     const wb = XLSX.utils.book_new();
     for (const sheetName in sheets) {

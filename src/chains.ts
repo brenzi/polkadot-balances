@@ -84,8 +84,16 @@ export const CHAINS: ChainConfig[] = [
   },
 ];
 
-export function createAllClients(chains?: ChainConfig[]): ChainRuntime[] {
-  const configs = chains ?? CHAINS.filter((c) => c.enabled);
+export function createAllClients(rpcOverrides?: Record<string, string[]>): ChainRuntime[] {
+  let configs: ChainConfig[];
+  if (rpcOverrides) {
+    // Full override: only chains listed in rpcOverrides are used
+    configs = CHAINS
+      .filter((c) => rpcOverrides[c.id] && rpcOverrides[c.id].length > 0)
+      .map((c) => ({ ...c, wsUrls: rpcOverrides[c.id]! }));
+  } else {
+    configs = CHAINS.filter((c) => c.enabled);
+  }
   return configs.map((config) => {
     const client = createClient(withPolkadotSdkCompat(getWsProvider(config.wsUrls)));
     const api = client.getTypedApi(config.descriptor);
