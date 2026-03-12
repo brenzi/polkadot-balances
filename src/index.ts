@@ -165,15 +165,10 @@ async function main() {
         chainBlockInfo.set(rt.config.id, { hash, number: blockNum, timestamp: new Date(Number(tsMs)) });
       }
     }
-  } else {
-    // Default: pin to current finalized block per chain
-    console.log("Pinning finalized blocks...");
-    for (const rt of runtimes) {
-      const info = await fetchFinalizedBlock(rt);
-      chainBlockInfo.set(rt.config.id, info);
-      console.log(`  ${rt.config.id}: #${info.number} (${info.timestamp.toISOString()})`);
-    }
   }
+  // For --at/--at-block, blocks are already pinned above.
+  // For the default case, pin lazily per-chain right before querying (avoids stale pins).
+  const useExplicitAt = !!(values.at || values["at-block"]);
 
   const refreshTime = new Date();
 
@@ -182,8 +177,38 @@ async function main() {
       console.log("Fetching balances for address:", account.Address, ", Name:", account.Name);
       for (const rt of runtimes) {
         console.log(`---- on ${rt.config.id.toUpperCase()} ----`);
+
+        // Lazy pin: fetch finalized block right before first query on this chain
+        if (!useExplicitAt && !chainBlockInfo.has(rt.config.id)) {
+          try {
+            const info = await fetchFinalizedBlock(rt);
+            chainBlockInfo.set(rt.config.id, info);
+            console.log(`  pinned #${info.number} (${info.timestamp.toISOString()})`);
+          } catch (e: any) {
+            console.warn(`  Could not pin block: ${e.message}`);
+          }
+        }
+
         const at = chainBlockInfo.get(rt.config.id)?.hash;
-        await getBalancesForAddressOnChain(rt, account.Address, balances, at);
+        try {
+          await getBalancesForAddressOnChain(rt, account.Address, balances, at);
+        } catch (e: any) {
+          if (at && e.message?.includes("not pinned")) {
+            // Block was unpinned between pin and query — re-pin and retry
+            console.warn(`  Block unpinned, re-pinning...`);
+            try {
+              const info = await fetchFinalizedBlock(rt);
+              chainBlockInfo.set(rt.config.id, info);
+              await getBalancesForAddressOnChain(rt, account.Address, balances, info.hash);
+            } catch {
+              // Last resort: query without at
+              console.warn(`  Re-pin failed, querying at latest finalized`);
+              await getBalancesForAddressOnChain(rt, account.Address, balances, undefined);
+            }
+          } else {
+            throw e;
+          }
+        }
       }
     }
   }

@@ -137,9 +137,18 @@ export interface ChainBlockInfo {
 }
 
 export async function fetchFinalizedBlock(rt: ChainRuntime): Promise<ChainBlockInfo> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const finalized = await rt.client.getFinalizedBlock();
+    try {
+      const tsMs = await rt.api.query.Timestamp.Now.getValue({ at: finalized.hash });
+      return { hash: finalized.hash, number: finalized.number, timestamp: new Date(Number(tsMs)) };
+    } catch {
+      // Block may have been unpinned between getFinalizedBlock and query — retry
+    }
+  }
+  // Last resort: return finalized info without exact timestamp
   const finalized = await rt.client.getFinalizedBlock();
-  const tsMs = await rt.api.query.Timestamp.Now.getValue({ at: finalized.hash });
-  return { hash: finalized.hash, number: finalized.number, timestamp: new Date(Number(tsMs)) };
+  return { hash: finalized.hash, number: finalized.number, timestamp: new Date() };
 }
 
 export async function destroyAllClients(runtimes: ChainRuntime[]) {
