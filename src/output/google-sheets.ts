@@ -23,7 +23,6 @@ async function getAuth(credentialsPath: string) {
 export async function checkGoogleSheetsAccess(config: GoogleSheetsConfig) {
   const auth = await getAuth(config.credentialsPath);
   const api = google.sheets({ version: "v4", auth });
-  // This will throw if credentials are invalid or sheet is not accessible
   await api.spreadsheets.get({ spreadsheetId: config.sheetId });
 }
 
@@ -35,6 +34,7 @@ export async function writeToGoogleSheets(
   config: GoogleSheetsConfig,
   sheets: Record<string, any[][]>,
   meta?: Record<string, SheetRowMeta>,
+  refreshTime?: Date,
 ) {
   const auth = await getAuth(config.credentialsPath);
   const api = google.sheets({ version: "v4", auth });
@@ -75,8 +75,9 @@ export async function writeToGoogleSheets(
     }
   }
 
-  // Prepend warning row and shift meta indices for Google Sheets
-  const WARNING = "⚠ This sheet is generated automatically. Contents will be overwritten on next run.";
+  // Prepend info row (A1=timestamp, B1=warning) and shift all indices by +1
+  const timestamp = (refreshTime ?? new Date()).toISOString();
+  const WARNING = "⚠ Contents will be overwritten automatically on next run.";
   const gsSheets: Record<string, any[][]> = {};
   const gsMeta: Record<string, SheetRowMeta> | undefined = meta
     ? Object.fromEntries(
@@ -84,11 +85,11 @@ export async function writeToGoogleSheets(
           transferableRows: v.transferableRows.map((r) => r + 1),
           reservedRows: v.reservedRows.map((r) => r + 1),
           frozenRows: v.frozenRows.map((r) => r + 1),
+          chainMerges: v.chainMerges.map((m) => ({ startRow: m.startRow + 1, endRow: m.endRow + 1 })),
         }]),
       )
     : undefined;
   for (const tabName in sheets) {
-    // Shift all formula row references by +1 to account for the warning row
     const shifted = sheets[tabName]!.map((row) =>
       row.map((cell: any) => {
         if (typeof cell === "string" && cell.startsWith("=")) {
@@ -97,7 +98,7 @@ export async function writeToGoogleSheets(
         return cell;
       }),
     );
-    gsSheets[tabName] = [[WARNING], ...shifted];
+    gsSheets[tabName] = [[timestamp, WARNING], ...shifted];
   }
 
   // For each token sheet: clear values, then write
@@ -130,7 +131,7 @@ export async function writeToGoogleSheets(
     const sheetTabId = sheetObj.properties.sheetId;
     const colCount = Math.max(...aoa.map((r) => r.length), 2);
 
-    // Warning row: italic grey
+    // Row 0 (info row): italic grey
     formatRequests.push({
       repeatCell: {
         range: { sheetId: sheetTabId, startRowIndex: 0, endRowIndex: 1 },
@@ -139,7 +140,7 @@ export async function writeToGoogleSheets(
       },
     });
 
-    // Bold header rows (rows 1-4) and summary rows (rows 6-12), after warning row
+    // Bold header rows (1-4) and summary rows (6-12), after info row
     for (const [start, end] of [[1, 5], [6, 12]]) {
       formatRequests.push({
         repeatCell: {
@@ -150,16 +151,16 @@ export async function writeToGoogleSheets(
       });
     }
 
-    // Wrap text on address header row (row 1, after warning)
+    // Wrap text on address header row (row 1) for account columns D+
     formatRequests.push({
       repeatCell: {
-        range: { sheetId: sheetTabId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 2, endColumnIndex: colCount },
+        range: { sheetId: sheetTabId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 3, endColumnIndex: colCount },
         cell: { userEnteredFormat: { wrapStrategy: "WRAP" } },
         fields: "userEnteredFormat.wrapStrategy",
       },
     });
 
-    // Set fixed column widths: A=120, B=200, account columns=120
+    // Column widths: A=120, B=200, C=100 (Total), D+=120
     formatRequests.push({
       updateDimensionProperties: {
         range: { sheetId: sheetTabId, dimension: "COLUMNS", startIndex: 0, endIndex: 1 },
@@ -174,19 +175,63 @@ export async function writeToGoogleSheets(
         fields: "pixelSize",
       },
     });
-    if (colCount > 2) {
+    formatRequests.push({
+      updateDimensionProperties: {
+        range: { sheetId: sheetTabId, dimension: "COLUMNS", startIndex: 2, endIndex: 3 },
+        properties: { pixelSize: 100 },
+        fields: "pixelSize",
+      },
+    });
+    if (colCount > 3) {
       formatRequests.push({
         updateDimensionProperties: {
-          range: { sheetId: sheetTabId, dimension: "COLUMNS", startIndex: 2, endIndex: colCount },
+          range: { sheetId: sheetTabId, dimension: "COLUMNS", startIndex: 3, endIndex: colCount },
           properties: { pixelSize: 120 },
           fields: "pixelSize",
         },
       });
     }
 
-    // Row coloring by type (indices already shifted by +1 in gsMeta)
+    // Light blue background for Total column (C = index 2)
+    const lightBlue = { red: 0.85, green: 0.92, blue: 1.0 };
+    formatRequests.push({
+      repeatCell: {
+        range: { sheetId: sheetTabId, startRowIndex: 1, endRowIndex: aoa.length, startColumnIndex: 2, endColumnIndex: 3 },
+        cell: { userEnteredFormat: { backgroundColor: lightBlue } },
+        fields: "userEnteredFormat.backgroundColor",
+      },
+    });
+
+    // Chain merges in column A
     const rowMeta = gsMeta?.[tabName];
     if (rowMeta) {
+      for (const merge of rowMeta.chainMerges) {
+        formatRequests.push({
+          mergeCells: {
+            range: {
+              sheetId: sheetTabId,
+              startRowIndex: merge.startRow,
+              endRowIndex: merge.endRow + 1,
+              startColumnIndex: 0,
+              endColumnIndex: 1,
+            },
+            mergeType: "MERGE_ALL",
+          },
+        });
+      }
+
+      // Vertical-align merged chain cells to middle
+      for (const merge of rowMeta.chainMerges) {
+        formatRequests.push({
+          repeatCell: {
+            range: { sheetId: sheetTabId, startRowIndex: merge.startRow, endRowIndex: merge.startRow + 1, startColumnIndex: 0, endColumnIndex: 1 },
+            cell: { userEnteredFormat: { verticalAlignment: "MIDDLE" } },
+            fields: "userEnteredFormat.verticalAlignment",
+          },
+        });
+      }
+
+      // Row coloring by type (indices already shifted by +1)
       const darkGreen = { red: 0.1, green: 0.4, blue: 0.1 };
       const grey = { red: 0.5, green: 0.5, blue: 0.5 };
 

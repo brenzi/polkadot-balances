@@ -130,6 +130,18 @@ export async function probeAndFilter(runtimes: ChainRuntime[], timeoutMs = 15000
   return alive;
 }
 
+export interface ChainBlockInfo {
+  hash: string;
+  number: number;
+  timestamp: Date;
+}
+
+export async function fetchFinalizedBlock(rt: ChainRuntime): Promise<ChainBlockInfo> {
+  const finalized = await rt.client.getFinalizedBlock();
+  const tsMs = await rt.api.query.Timestamp.Now.getValue({ at: finalized.hash });
+  return { hash: finalized.hash, number: finalized.number, timestamp: new Date(Number(tsMs)) };
+}
+
 export async function destroyAllClients(runtimes: ChainRuntime[]) {
   for (const rt of runtimes) {
     await rt.client.destroy();

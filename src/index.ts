@@ -5,7 +5,7 @@ import { parseArgs } from "node:util";
 import Papa from "papaparse";
 import XLSX from "xlsx";
 import { type BalanceRecord } from "./balance.ts";
-import { createAllClients, destroyAllClients, probeAndFilter } from "./chains.ts";
+import { createAllClients, destroyAllClients, probeAndFilter, fetchFinalizedBlock, type ChainBlockInfo } from "./chains.ts";
 import { getBalancesForAddressOnChain } from "./query.ts";
 import { balanceRecordToSheets, getColHideFlags } from "./output/sheet-layout.ts";
 import { writeToGoogleSheets, checkGoogleSheetsAccess } from "./output/google-sheets.ts";
@@ -122,16 +122,18 @@ async function main() {
   }
 
   const balances: BalanceRecord = {};
+  const chainBlockInfo = new Map<string, ChainBlockInfo>();
 
-  // Resolve --at / --at-block to per-chain block hashes
-  const chainBlockHashes = new Map<string, string>();
+  // Pin a specific block per chain
   if (values.at) {
     const targetTs = parseDateArg(values.at);
     console.log(`Resolving block hashes for date ${new Date(targetTs * 1000).toISOString()}...`);
     for (const rt of runtimes) {
       console.log(`  Resolving for ${rt.config.id}...`);
       const hash = await resolveBlockHashAtTimestamp(rt, targetTs);
-      chainBlockHashes.set(rt.config.id, hash);
+      const blockNum = await rt.api.query.System.Number.getValue({ at: hash });
+      const tsMs = await rt.api.query.Timestamp.Now.getValue({ at: hash });
+      chainBlockInfo.set(rt.config.id, { hash, number: Number(blockNum), timestamp: new Date(Number(tsMs)) });
     }
   } else if (values["at-block"]) {
     const blockNum = parseInt(values["at-block"], 10);
@@ -139,51 +141,67 @@ async function main() {
       console.error("--at-block must be a number");
       process.exit(1);
     }
-    // For --at-block, resolve the block on each chain.
-    // For relay chains, use the block number directly.
-    // For parachains, resolve via timestamp of the relay block.
     console.log(`Resolving block hashes for block #${blockNum}...`);
-    // First, resolve the relay chain block to get its timestamp
     const relayRt = runtimes.find((rt) => rt.config.id === "dot" || rt.config.id === "ksm");
     let relayTs: number | undefined;
     if (relayRt) {
       const hash = await resolveBlockHashAtNumber(relayRt, blockNum);
-      chainBlockHashes.set(relayRt.config.id, hash);
       const tsMs = await relayRt.api.query.Timestamp.Now.getValue({ at: hash });
       relayTs = Number(tsMs) / 1000;
+      chainBlockInfo.set(relayRt.config.id, { hash, number: blockNum, timestamp: new Date(Number(tsMs)) });
       console.log(`  Relay block #${blockNum} timestamp: ${new Date(relayTs * 1000).toISOString()}`);
     }
-    // For other chains, resolve via timestamp
     for (const rt of runtimes) {
-      if (chainBlockHashes.has(rt.config.id)) continue;
+      if (chainBlockInfo.has(rt.config.id)) continue;
       if (relayTs) {
         console.log(`  Resolving for ${rt.config.id} via timestamp...`);
         const hash = await resolveBlockHashAtTimestamp(rt, relayTs);
-        chainBlockHashes.set(rt.config.id, hash);
+        const num = await rt.api.query.System.Number.getValue({ at: hash });
+        const tsMs = await rt.api.query.Timestamp.Now.getValue({ at: hash });
+        chainBlockInfo.set(rt.config.id, { hash, number: Number(num), timestamp: new Date(Number(tsMs)) });
       } else {
-        // No relay chain context — use block number directly (best effort)
         const hash = await resolveBlockHashAtNumber(rt, blockNum);
-        chainBlockHashes.set(rt.config.id, hash);
+        const tsMs = await rt.api.query.Timestamp.Now.getValue({ at: hash });
+        chainBlockInfo.set(rt.config.id, { hash, number: blockNum, timestamp: new Date(Number(tsMs)) });
       }
     }
+  } else {
+    // Default: pin to current finalized block per chain
+    console.log("Pinning finalized blocks...");
+    for (const rt of runtimes) {
+      const info = await fetchFinalizedBlock(rt);
+      chainBlockInfo.set(rt.config.id, info);
+      console.log(`  ${rt.config.id}: #${info.number} (${info.timestamp.toISOString()})`);
+    }
   }
+
+  const refreshTime = new Date();
 
   for (const account of accountsList) {
     if (account.Address) {
       console.log("Fetching balances for address:", account.Address, ", Name:", account.Name);
       for (const rt of runtimes) {
         console.log(`---- on ${rt.config.id.toUpperCase()} ----`);
-        const at = chainBlockHashes.get(rt.config.id);
+        const at = chainBlockInfo.get(rt.config.id)?.hash;
         await getBalancesForAddressOnChain(rt, account.Address, balances, at);
       }
     }
   }
 
-  const { sheets, sheetMeta } = balanceRecordToSheets(balances, accountsList);
+  // Build chain spec name → block number map for sheet labels
+  const chainBlocks: Record<string, number> = {};
+  for (const rt of runtimes) {
+    const info = chainBlockInfo.get(rt.config.id);
+    if (rt._specCache && info) {
+      chainBlocks[rt._specCache.chain] = info.number;
+    }
+  }
+
+  const { sheets, sheetMeta } = balanceRecordToSheets(balances, accountsList, chainBlocks);
 
   // Output to Google Sheets or xlsx
   if (sheetId) {
-    await writeToGoogleSheets({ sheetId, credentialsPath: credPath! }, sheets, sheetMeta);
+    await writeToGoogleSheets({ sheetId, credentialsPath: credPath! }, sheets, sheetMeta, refreshTime);
   } else {
     const basePath = resolvePath(values.config ?? positionals[0]!);
     const { dir, name } = path.parse(basePath);
