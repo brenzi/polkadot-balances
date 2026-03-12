@@ -23,6 +23,17 @@ export interface RunConfig {
   rpcNodes?: Record<string, string[]>;
 }
 
+// Suppress polkadot-api internal noise
+process.on("unhandledRejection", (reason: any) => {
+  if (reason?.code === -32601) return; // "Method not found" from chainHead probes
+  console.error("Unhandled rejection:", reason);
+});
+const _origWarn = console.warn;
+console.warn = (...args: any[]) => {
+  if (typeof args[0] === "string" && args[0].startsWith("Runtime entry") && args[0].includes("not found")) return;
+  _origWarn.apply(console, args);
+};
+
 main();
 
 async function main() {
