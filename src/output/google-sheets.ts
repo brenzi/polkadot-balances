@@ -192,15 +192,33 @@ export async function writeToGoogleSheets(
       });
     }
 
-    // Light blue background for Total column (C = index 2)
-    const lightBlue = { red: 0.85, green: 0.92, blue: 1.0 };
+    // Very light blue background for Total column (C = index 2)
     formatRequests.push({
       repeatCell: {
         range: { sheetId: sheetTabId, startRowIndex: 1, endRowIndex: aoa.length, startColumnIndex: 2, endColumnIndex: 3 },
-        cell: { userEnteredFormat: { backgroundColor: lightBlue } },
+        cell: { userEnteredFormat: { backgroundColor: { red: 0.94, green: 0.97, blue: 1.0 } } },
         fields: "userEnteredFormat.backgroundColor",
       },
     });
+
+    // Hide account columns (D+) that are all zeros
+    for (let colIdx = 3; colIdx < colCount; colIdx++) {
+      let sum = 0;
+      for (const row of aoa) {
+        const val = row[colIdx];
+        if (typeof val === "number") sum += val;
+        else if (typeof val === "string" && val !== "" && !val.startsWith("=") && !isNaN(Number(val))) sum += Number(val);
+      }
+      if (sum === 0) {
+        formatRequests.push({
+          updateDimensionProperties: {
+            range: { sheetId: sheetTabId, dimension: "COLUMNS", startIndex: colIdx, endIndex: colIdx + 1 },
+            properties: { hiddenByUser: true },
+            fields: "hiddenByUser",
+          },
+        });
+      }
+    }
 
     // Chain merges in column A
     const rowMeta = gsMeta?.[tabName];
