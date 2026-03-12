@@ -160,6 +160,15 @@ export async function writeToGoogleSheets(
       },
     });
 
+    // Wrap text on chain name column (A) for data rows
+    formatRequests.push({
+      repeatCell: {
+        range: { sheetId: sheetTabId, startRowIndex: 0, endRowIndex: aoa.length, startColumnIndex: 0, endColumnIndex: 1 },
+        cell: { userEnteredFormat: { wrapStrategy: "WRAP" } },
+        fields: "userEnteredFormat.wrapStrategy",
+      },
+    });
+
     // Column widths: A=120, B=200, C=100 (Total), D+=120
     formatRequests.push({
       updateDimensionProperties: {
