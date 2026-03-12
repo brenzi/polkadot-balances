@@ -1,0 +1,100 @@
+import { dot, pah, ppl, ksm, kah, kct, kpl, enc } from "@polkadot-api/descriptors";
+import { createClient } from "polkadot-api";
+import { getWsProvider } from "polkadot-api/ws-provider/node";
+import { withPolkadotSdkCompat } from "polkadot-api/polkadot-sdk-compat";
+import type { ProbeId } from "./probes/index.ts";
+
+export interface ChainConfig {
+  id: string;
+  descriptor: any;
+  wsUrls: string[];
+  probes: ProbeId[];
+  enabled: boolean;
+}
+
+export interface ChainRuntime {
+  config: ChainConfig;
+  client: any;
+  api: any;
+  _specCache?: { decimals: number; chain: string; symbol: string; ed: bigint };
+}
+
+export const CHAINS: ChainConfig[] = [
+  {
+    id: "dot",
+    descriptor: dot,
+    wsUrls: ["wss://polkadot.chainbricks.synology.me:4100", "wss://polkadot-rpc.n.dwellir.com", "wss://rpc.polkadot.io"],
+    enabled: true,
+    probes: [
+      "core", "staking", "conviction", "proxy", "preimage", "referenda",
+      "parachain", "nomination-pool", "hrmp", "multisig", "bounties", "holds",
+    ],
+  },
+  {
+    id: "pah",
+    descriptor: pah,
+    wsUrls: ["wss://bezzera.encointer.org:4130", "wss://polkadot-asset-hub-rpc.polkadot.io"],
+    enabled: true,
+    probes: ["core", "proxy", "uniques", "nfts", "nomination-pool", "parachain", "assets", "multisig", "holds"],
+  },
+  {
+    id: "ksm",
+    descriptor: ksm,
+    wsUrls: ["wss://kusama.chainbricks.synology.me:4200", "wss://kusama-rpc.n.dwellir.com", "wss://kusama-rpc.polkadot.io"],
+    enabled: true,
+    probes: [
+      "core", "staking", "conviction", "proxy", "preimage", "referenda",
+      "parachain", "nomination-pool", "hrmp", "multisig", "bounties", "holds",
+    ],
+  },
+  {
+    id: "kah",
+    descriptor: kah,
+    wsUrls: ["wss://bezzera.encointer.org:4230", "wss://sys.ibp.network/asset-hub-kusama"],
+    enabled: true,
+    probes: ["core", "proxy", "uniques", "nfts", "nomination-pool", "assets", "multisig", "holds"],
+  },
+  {
+    id: "enc",
+    descriptor: enc,
+    wsUrls: ["wss://kusama.api.encointer.org"],
+    enabled: true,
+    probes: ["core", "proxy", "holds"],
+  },
+  {
+    id: "ppl",
+    descriptor: ppl,
+    wsUrls: ["wss://people-polkadot-rpc.n.dwellir.com", "wss://sys.ibp.network/people-polkadot"],
+    enabled: false,
+    probes: ["core", "proxy", "identity"],
+  },
+  {
+    id: "kpl",
+    descriptor: kpl,
+    wsUrls: ["wss://sys.ibp.network/people-kusama", "wss://people-kusama-rpc.n.dwellir.com"],
+    enabled: false,
+    probes: ["core", "proxy", "identity"],
+  },
+  {
+    id: "kct",
+    descriptor: kct,
+    wsUrls: ["wss://sys.ibp.network/coretime-kusama", "wss://coretime-kusama-rpc.n.dwellir.com"],
+    enabled: false,
+    probes: ["core", "proxy", "collator"],
+  },
+];
+
+export function createAllClients(chains?: ChainConfig[]): ChainRuntime[] {
+  const configs = chains ?? CHAINS.filter((c) => c.enabled);
+  return configs.map((config) => {
+    const client = createClient(withPolkadotSdkCompat(getWsProvider(config.wsUrls)));
+    const api = client.getTypedApi(config.descriptor);
+    return { config, client, api };
+  });
+}
+
+export async function destroyAllClients(runtimes: ChainRuntime[]) {
+  for (const rt of runtimes) {
+    await rt.client.destroy();
+  }
+}
