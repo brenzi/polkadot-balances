@@ -34,6 +34,8 @@ export class Balance {
 }
 
 // token → chain → category → address/reason → Balance
+// Note: special keys (frozenReason, reservedReason, nominationPool, pool) have an extra nesting level.
+// storeBalance handles this via `any` casting; consumers use `as any` for deep access.
 export type BalanceRecord = Record<string, Record<string, Record<string, Record<string, Balance>>>>;
 
 export function storeBalance(balances: BalanceRecord, path: (string | number)[], balance: Balance) {

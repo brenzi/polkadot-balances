@@ -1,4 +1,4 @@
-import type { BalanceRecord } from "../balance.ts";
+import type { Balance, BalanceRecord } from "../balance.ts";
 
 export function colLetter(idx: number): string {
   let s = "";
@@ -83,8 +83,8 @@ export function balanceRecordToSheets(
             chain,
             `frozen: ${reason}`,
             ...accountsList.map((acc) => {
-              const accountBalances = balances[token]![chain]!["frozenReason"];
-              const bal = accountBalances ? accountBalances[reason]?.[acc.Address] : undefined;
+              const accountBalances = (balances[token]![chain] as any)?.["frozenReason"];
+              const bal = accountBalances?.[reason]?.[acc.Address] as Balance | undefined;
               return bal?.decimalValue() ?? "";
             }),
           ]);
@@ -114,8 +114,8 @@ export function balanceRecordToSheets(
             chain,
             `reserved: ${reason}`,
             ...accountsList.map((acc) => {
-              const accountBalances = balances[token]![chain]!["reservedReason"];
-              const bal = accountBalances ? accountBalances[reason]?.[acc.Address] : undefined;
+              const accountBalances = (balances[token]![chain] as any)?.["reservedReason"];
+              const bal = accountBalances?.[reason]?.[acc.Address] as Balance | undefined;
               return bal?.decimalValue() ?? "";
             }),
           ]);
@@ -134,8 +134,8 @@ export function balanceRecordToSheets(
             chain,
             `nominationPool ${pool}`,
             ...accountsList.map((acc) => {
-              const accountBalances = balances[token]![chain]!["nominationPool"];
-              const bal = accountBalances ? accountBalances[pool]?.[acc.Address] : undefined;
+              const accountBalances = (balances[token]![chain] as any)?.["nominationPool"];
+              const bal = accountBalances?.[pool]?.[acc.Address] as Balance | undefined;
               return bal?.decimalValue() ?? "";
             }),
           ]);
@@ -154,8 +154,8 @@ export function balanceRecordToSheets(
             chain,
             `pool ${pool} share`,
             ...accountsList.map((acc) => {
-              const accountBalances = balances[token]![chain]!["pool"];
-              const bal = accountBalances ? accountBalances[pool]?.[acc.Address] : undefined;
+              const accountBalances = (balances[token]![chain] as any)?.["pool"];
+              const bal = accountBalances?.[pool]?.[acc.Address] as Balance | undefined;
               return bal?.decimalValue() ?? "";
             }),
           ]);

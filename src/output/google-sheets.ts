@@ -17,6 +17,17 @@ async function getAuth(credentialsPath: string) {
 }
 
 /**
+ * Preflight check: verify credentials and sheet write access.
+ * Throws on failure so we fail fast before any chain queries.
+ */
+export async function checkGoogleSheetsAccess(config: GoogleSheetsConfig) {
+  const auth = await getAuth(config.credentialsPath);
+  const api = google.sheets({ version: "v4", auth });
+  // This will throw if credentials are invalid or sheet is not accessible
+  await api.spreadsheets.get({ spreadsheetId: config.sheetId });
+}
+
+/**
  * Write balance sheets to a Google Spreadsheet.
  * Strategy: clear values (preserving formatting), then write full grid.
  */
@@ -64,9 +75,34 @@ export async function writeToGoogleSheets(
     }
   }
 
-  // For each token sheet: clear values, then write
+  // Prepend warning row and shift meta indices for Google Sheets
+  const WARNING = "⚠ This sheet is generated automatically. Contents will be overwritten on next run.";
+  const gsSheets: Record<string, any[][]> = {};
+  const gsMeta: Record<string, SheetRowMeta> | undefined = meta
+    ? Object.fromEntries(
+        Object.entries(meta).map(([k, v]) => [k, {
+          transferableRows: v.transferableRows.map((r) => r + 1),
+          reservedRows: v.reservedRows.map((r) => r + 1),
+          frozenRows: v.frozenRows.map((r) => r + 1),
+        }]),
+      )
+    : undefined;
   for (const tabName in sheets) {
-    const aoa = sheets[tabName]!;
+    // Shift all formula row references by +1 to account for the warning row
+    const shifted = sheets[tabName]!.map((row) =>
+      row.map((cell: any) => {
+        if (typeof cell === "string" && cell.startsWith("=")) {
+          return cell.replace(/([A-Z]+)(\d+)/g, (_: string, col: string, num: string) => `${col}${Number(num) + 1}`);
+        }
+        return cell;
+      }),
+    );
+    gsSheets[tabName] = [[WARNING], ...shifted];
+  }
+
+  // For each token sheet: clear values, then write
+  for (const tabName in gsSheets) {
+    const aoa = gsSheets[tabName]!;
 
     await api.spreadsheets.values.clear({
       spreadsheetId: config.sheetId,
@@ -87,26 +123,35 @@ export async function writeToGoogleSheets(
   const formatRequests: any[] = [];
   const updatedSpreadsheet = await api.spreadsheets.get({ spreadsheetId: config.sheetId });
 
-  for (const tabName in sheets) {
-    const aoa = sheets[tabName]!;
+  for (const tabName in gsSheets) {
+    const aoa = gsSheets[tabName]!;
     const sheetObj = updatedSpreadsheet.data.sheets?.find((s) => s.properties?.title === tabName);
     if (!sheetObj?.properties?.sheetId && sheetObj?.properties?.sheetId !== 0) continue;
     const sheetTabId = sheetObj.properties.sheetId;
-    const colCount = aoa[0]?.length ?? 2;
+    const colCount = Math.max(...aoa.map((r) => r.length), 2);
 
-    // Bold header rows
+    // Warning row: italic grey
     formatRequests.push({
       repeatCell: {
-        range: { sheetId: sheetTabId, startRowIndex: 0, endRowIndex: 4 },
+        range: { sheetId: sheetTabId, startRowIndex: 0, endRowIndex: 1 },
+        cell: { userEnteredFormat: { textFormat: { italic: true, foregroundColorStyle: { rgbColor: { red: 0.6, green: 0.6, blue: 0.6 } } } } },
+        fields: "userEnteredFormat.textFormat(italic,foregroundColorStyle)",
+      },
+    });
+
+    // Bold header rows (rows 1-4, after warning row)
+    formatRequests.push({
+      repeatCell: {
+        range: { sheetId: sheetTabId, startRowIndex: 1, endRowIndex: 5 },
         cell: { userEnteredFormat: { textFormat: { bold: true } } },
         fields: "userEnteredFormat.textFormat.bold",
       },
     });
 
-    // Wrap text on header row (AccountId is wide)
+    // Wrap text on address header row (row 1, after warning)
     formatRequests.push({
       repeatCell: {
-        range: { sheetId: sheetTabId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 2, endColumnIndex: colCount },
+        range: { sheetId: sheetTabId, startRowIndex: 1, endRowIndex: 2, startColumnIndex: 2, endColumnIndex: colCount },
         cell: { userEnteredFormat: { wrapStrategy: "WRAP" } },
         fields: "userEnteredFormat.wrapStrategy",
       },
@@ -137,8 +182,8 @@ export async function writeToGoogleSheets(
       });
     }
 
-    // Row coloring by type
-    const rowMeta = meta?.[tabName];
+    // Row coloring by type (indices already shifted by +1 in gsMeta)
+    const rowMeta = gsMeta?.[tabName];
     if (rowMeta) {
       const darkGreen = { red: 0.1, green: 0.4, blue: 0.1 };
       const grey = { red: 0.5, green: 0.5, blue: 0.5 };

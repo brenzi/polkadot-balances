@@ -1,14 +1,20 @@
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { parseArgs } from "node:util";
 import Papa from "papaparse";
 import XLSX from "xlsx";
 import { type BalanceRecord } from "./balance.ts";
-import { createAllClients, destroyAllClients } from "./chains.ts";
+import { createAllClients, destroyAllClients, probeAndFilter } from "./chains.ts";
 import { getBalancesForAddressOnChain } from "./query.ts";
 import { balanceRecordToSheets, getColHideFlags } from "./output/sheet-layout.ts";
-import { writeToGoogleSheets } from "./output/google-sheets.ts";
+import { writeToGoogleSheets, checkGoogleSheetsAccess } from "./output/google-sheets.ts";
 import { parseDateArg, resolveBlockHashAtTimestamp, resolveBlockHashAtNumber } from "./block-at.ts";
+
+function resolvePath(p: string): string {
+  if (p.startsWith("~/")) return path.join(os.homedir(), p.slice(2));
+  return p;
+}
 
 export interface RunConfig {
   accounts: { address: string; name?: string; beneficialOwner?: string; controller?: string }[];
@@ -38,7 +44,7 @@ async function main() {
   let rpcOverrides: Record<string, string[]> | undefined;
 
   if (values.config) {
-    const cfg: RunConfig = JSON.parse(fs.readFileSync(values.config, "utf8"));
+    const cfg: RunConfig = JSON.parse(fs.readFileSync(resolvePath(values.config), "utf8"));
     accountsList = cfg.accounts.map((a) => ({
       Address: a.address,
       Name: a.name,
@@ -46,7 +52,7 @@ async function main() {
       Controller: a.controller,
     }));
     sheetId = cfg.sheetId;
-    credPath = cfg.credentials;
+    credPath = cfg.credentials ? resolvePath(cfg.credentials) : undefined;
     rpcOverrides = cfg.rpcNodes;
   } else {
     const csvFilePath = positionals[0];
@@ -54,7 +60,7 @@ async function main() {
       console.error("Usage: bun run src/index.ts [--config config.json] | <csv-file-path> [--at YYYYMMDD|YYYYMM] [--at-block NUMBER]");
       process.exit(1);
     }
-    const csvFile = fs.readFileSync(csvFilePath, "utf8");
+    const csvFile = fs.readFileSync(resolvePath(csvFilePath), "utf8");
     const filteredCsv = csvFile
       .split("\n")
       .filter((line) => !line.trim().startsWith("#"))
@@ -62,10 +68,59 @@ async function main() {
     const parsed = Papa.parse(filteredCsv, { header: true });
     accountsList = parsed.data as typeof accountsList;
     sheetId = values["sheet-id"] ?? process.env.GOOGLE_SHEET_ID;
-    credPath = values.credentials ?? process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    credPath = values.credentials ? resolvePath(values.credentials) : process.env.GOOGLE_APPLICATION_CREDENTIALS;
   }
 
-  const runtimes = createAllClients(rpcOverrides);
+  // --- Preflight checks (fail fast before any chain queries) ---
+
+  // 1. Credentials file
+  if (credPath) {
+    if (!fs.existsSync(credPath)) {
+      console.error(`Credentials file not found: ${credPath}`);
+      process.exit(1);
+    }
+  }
+
+  // 2. Google Sheets access
+  if (sheetId) {
+    if (!credPath) {
+      console.error("--credentials or GOOGLE_APPLICATION_CREDENTIALS required when using --sheet-id");
+      process.exit(1);
+    }
+    console.log("Checking Google Sheets access...");
+    try {
+      await checkGoogleSheetsAccess({ sheetId, credentialsPath: credPath });
+      console.log("  Google Sheets access OK");
+    } catch (e: any) {
+      console.error(`Google Sheets access failed: ${e.message ?? e}`);
+      process.exit(1);
+    }
+  }
+
+  // 3. xlsx output path writable
+  if (!sheetId) {
+    const basePath = values.config ?? positionals[0]!;
+    const { dir } = path.parse(resolvePath(basePath));
+    const outputDir = dir || ".";
+    const testFile = path.join(outputDir, `.balances-write-test-${Date.now()}`);
+    try {
+      fs.writeFileSync(testFile, "");
+      fs.unlinkSync(testFile);
+    } catch (e: any) {
+      console.error(`Cannot write to output directory ${outputDir}: ${e.message}`);
+      process.exit(1);
+    }
+  }
+
+  // 4. Create clients and probe RPC endpoints
+  console.log("Probing RPC endpoints...");
+  const allRuntimes = createAllClients(rpcOverrides);
+  let runtimes = await probeAndFilter(allRuntimes);
+  if (runtimes.length === 0) {
+    console.error("No reachable chains. Aborting.");
+    process.exit(1);
+  }
+
   const balances: BalanceRecord = {};
 
   // Resolve --at / --at-block to per-chain block hashes
@@ -128,13 +183,9 @@ async function main() {
 
   // Output to Google Sheets or xlsx
   if (sheetId) {
-    if (!credPath) {
-      console.error("--credentials or GOOGLE_APPLICATION_CREDENTIALS required when using --sheet-id");
-      process.exit(1);
-    }
-    await writeToGoogleSheets({ sheetId, credentialsPath: credPath }, sheets, sheetMeta);
+    await writeToGoogleSheets({ sheetId, credentialsPath: credPath! }, sheets, sheetMeta);
   } else {
-    const basePath = values.config ?? positionals[0]!;
+    const basePath = resolvePath(values.config ?? positionals[0]!);
     const { dir, name } = path.parse(basePath);
     const outputFile = path.join(dir, `${name}-balances.xlsx`);
     const wb = XLSX.utils.book_new();

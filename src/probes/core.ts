@@ -14,7 +14,7 @@ export const coreProbe: BalanceProbe = {
     const frozen = new Balance(balance.frozen, decimals, symbol);
     const free = new Balance(balance.free, decimals, symbol);
     const transferable = new Balance(
-      balance.free - maxBigInt(0n, balance.frozen - balance.reserved),
+      balance.free - maxBigInt(0n, BigInt(balance.frozen) - BigInt(balance.reserved)),
       decimals,
       symbol,
     );

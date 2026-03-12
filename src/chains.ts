@@ -89,7 +89,7 @@ export function createAllClients(rpcOverrides?: Record<string, string[]>): Chain
   if (rpcOverrides) {
     // Full override: only chains listed in rpcOverrides are used
     configs = CHAINS
-      .filter((c) => rpcOverrides[c.id] && rpcOverrides[c.id].length > 0)
+      .filter((c) => rpcOverrides[c.id]?.length)
       .map((c) => ({ ...c, wsUrls: rpcOverrides[c.id]! }));
   } else {
     configs = CHAINS.filter((c) => c.enabled);
@@ -99,6 +99,35 @@ export function createAllClients(rpcOverrides?: Record<string, string[]>): Chain
     const api = client.getTypedApi(config.descriptor);
     return { config, client, api };
   });
+}
+
+/**
+ * Probe each runtime with a simple RPC call. Returns only reachable runtimes.
+ * Unreachable ones are destroyed and logged.
+ */
+export async function probeAndFilter(runtimes: ChainRuntime[], timeoutMs = 15000): Promise<ChainRuntime[]> {
+  const results = await Promise.allSettled(
+    runtimes.map(async (rt) => {
+      const result: number = await Promise.race([
+        rt.api.query.System.Number.getValue() as Promise<number>,
+        new Promise<number>((_, reject) => setTimeout(() => reject(new Error("timeout")), timeoutMs)),
+      ]);
+      return { rt, blockNum: result };
+    }),
+  );
+
+  const alive: ChainRuntime[] = [];
+  for (let i = 0; i < runtimes.length; i++) {
+    const r = results[i]!;
+    if (r.status === "fulfilled") {
+      console.log(`  ${runtimes[i]!.config.id}: reachable (block #${r.value.blockNum})`);
+      alive.push(runtimes[i]!);
+    } else {
+      console.warn(`  ${runtimes[i]!.config.id}: unreachable (${r.reason}), skipping`);
+      await runtimes[i]!.client.destroy();
+    }
+  }
+  return alive;
 }
 
 export async function destroyAllClients(runtimes: ChainRuntime[]) {
