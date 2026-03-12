@@ -24,9 +24,16 @@ export interface RunConfig {
 }
 
 // Suppress polkadot-api internal noise
+const _origError = console.error;
+console.error = (...args: any[]) => {
+  const first = args[0];
+  if (first?.code === -32601) return; // RpcError object from chainHead probes
+  if (typeof first === "string" && first.includes("-32601")) return;
+  _origError.apply(console, args);
+};
 process.on("unhandledRejection", (reason: any) => {
-  if (reason?.code === -32601) return; // "Method not found" from chainHead probes
-  console.error("Unhandled rejection:", reason);
+  if (reason?.code === -32601) return;
+  _origError("Unhandled rejection:", reason);
 });
 const _origWarn = console.warn;
 console.warn = (...args: any[]) => {
