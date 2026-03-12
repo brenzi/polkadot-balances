@@ -11,11 +11,18 @@ export function colLetter(idx: number): string {
   return s;
 }
 
+export interface SheetRowMeta {
+  transferableRows: number[]; // 0-based row indices
+  reservedRows: number[];
+  frozenRows: number[];
+}
+
 export function balanceRecordToSheets(
   balances: BalanceRecord,
   accountsList: { Address: string; Name?: string; BeneficialOwner?: string; Controller?: string }[],
 ) {
   const sheets: Record<string, any[][]> = {};
+  const sheetMeta: Record<string, SheetRowMeta> = {};
 
   for (const token in balances) {
     const rows: any[][] = [];
@@ -81,6 +88,7 @@ export function balanceRecordToSheets(
               return bal?.decimalValue() ?? "";
             }),
           ]);
+          frozenRows.push(rows.length);
         }
       } catch {
         // no frozen reasons
@@ -111,6 +119,7 @@ export function balanceRecordToSheets(
               return bal?.decimalValue() ?? "";
             }),
           ]);
+          reservedRows.push(rows.length);
         }
       } catch {
         // no reserved reasons
@@ -165,8 +174,8 @@ export function balanceRecordToSheets(
       label,
       ...accountsList.map((_, i) => {
         const col = colLetter(2 + i); // column C onwards
-        const sumRange = sourceRows.map((r) => `${col}${r}`).join(",");
-        return sumRange ? `=SUM(${sumRange})` : "";
+        if (sourceRows.length === 0) return "";
+        return `=SUM(${sourceRows.map((r) => `${col}${r}`).join(",")})`;
       }),
     ];
 
@@ -190,8 +199,14 @@ export function balanceRecordToSheets(
     ]);
 
     sheets[token] = rows;
+    sheetMeta[token] = {
+      // Convert 1-based formula rows to 0-based indices
+      transferableRows: transferableRows.map((r) => r - 1),
+      reservedRows: reservedRows.map((r) => r - 1),
+      frozenRows: frozenRows.map((r) => r - 1),
+    };
   }
-  return sheets;
+  return { sheets, sheetMeta };
 }
 
 export function getColHideFlags(rows: any[][]) {

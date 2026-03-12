@@ -102,7 +102,7 @@ async function main() {
     }
   }
 
-  const sheets = balanceRecordToSheets(balances, accountsList);
+  const { sheets, sheetMeta } = balanceRecordToSheets(balances, accountsList);
 
   // Output to Google Sheets or xlsx
   const sheetId = values["sheet-id"] ?? process.env.GOOGLE_SHEET_ID;
@@ -113,7 +113,7 @@ async function main() {
       console.error("--credentials or GOOGLE_APPLICATION_CREDENTIALS required when using --sheet-id");
       process.exit(1);
     }
-    await writeToGoogleSheets({ sheetId, credentialsPath: credPath }, sheets);
+    await writeToGoogleSheets({ sheetId, credentialsPath: credPath }, sheets, sheetMeta);
   } else {
     const { dir, name } = path.parse(csvFilePath);
     const outputFile = path.join(dir, `${name}-balances.xlsx`);
