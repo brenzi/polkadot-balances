@@ -204,9 +204,9 @@ async function main() {
         try {
           await getBalancesForAddressOnChain(rt, account.Address, balances, at);
         } catch (e: any) {
-          if (at && e.message?.includes("not pinned")) {
-            // Block was unpinned between pin and query — re-pin and retry
-            console.warn(`  Block unpinned, re-pinning...`);
+          if (at && (e.message?.includes("not pinned") || e.code === -32601)) {
+            // Block was unpinned or chainHead RPC failed — re-pin and retry
+            console.warn(`  Block stale, re-pinning...`);
             try {
               const info = await fetchFinalizedBlock(rt);
               chainBlockInfo.set(rt.config.id, info);
