@@ -17,6 +17,19 @@ export interface SheetRowMeta {
   frozenRows: number[];
 }
 
+// Fixed layout row positions (1-based, for spreadsheet formulas):
+//   1-4:  header rows
+//   5:    empty
+//   6:    Total transferable
+//   7:    Total frozen
+//   8:    Total reserved
+//   9:    Total on-account balances
+//  10:    Total pooled
+//  11:    Grand total
+//  12:    empty
+//  13+:   data rows
+const DATA_START = 12; // 0-based index where data rows begin
+
 export function balanceRecordToSheets(
   balances: BalanceRecord,
   accountsList: { Address: string; Name?: string; BeneficialOwner?: string; Controller?: string }[],
@@ -25,22 +38,17 @@ export function balanceRecordToSheets(
   const sheetMeta: Record<string, SheetRowMeta> = {};
 
   for (const token in balances) {
-    const rows: any[][] = [];
-    // Header rows
-    rows.push(["Chain", "balance kind", ...accountsList.map((acc) => acc.Address)]);
-    rows.push(["", "", ...accountsList.map((acc) => acc.Name)]);
-    rows.push(["", "", ...accountsList.map((acc) => acc.BeneficialOwner)]);
-    rows.push(["Chain", "Type", ...accountsList.map((acc) => acc.Controller)]);
-
-    const fullBalanceRows: number[] = [];
-    const transferableRows: number[] = [];
-    const poolRows: number[] = [];
-    const frozenRows: number[] = [];
-    const reservedRows: number[] = [];
+    // Build data rows into a separate array, tracking row types
+    const dataRows: any[][] = [];
+    const fullBalanceIdxs: number[] = [];
+    const transferableIdxs: number[] = [];
+    const poolIdxs: number[] = [];
+    const frozenIdxs: number[] = [];
+    const reservedIdxs: number[] = [];
 
     for (const chain in balances[token]) {
-      // FULL BALANCES
-      rows.push([
+      fullBalanceIdxs.push(dataRows.length);
+      dataRows.push([
         chain,
         "fullBalance",
         ...accountsList.map((acc) => {
@@ -49,10 +57,9 @@ export function balanceRecordToSheets(
           return bal?.decimalValue() ?? "";
         }),
       ]);
-      fullBalanceRows.push(rows.length);
 
-      // TRANSFERABLE BALANCES
-      rows.push([
+      transferableIdxs.push(dataRows.length);
+      dataRows.push([
         chain,
         "transferable",
         ...accountsList.map((acc) => {
@@ -61,10 +68,9 @@ export function balanceRecordToSheets(
           return bal?.decimalValue() ?? "";
         }),
       ]);
-      transferableRows.push(rows.length);
 
-      // FROZEN BALANCES
-      rows.push([
+      frozenIdxs.push(dataRows.length);
+      dataRows.push([
         chain,
         "frozen total",
         ...accountsList.map((acc) => {
@@ -73,13 +79,13 @@ export function balanceRecordToSheets(
           return bal?.decimalValue() ?? "";
         }),
       ]);
-      frozenRows.push(rows.length);
 
       try {
         const reasons = Object.keys(balances[token]![chain]!["frozenReason"]!);
         console.log("frozen reasons:", reasons);
         for (const reason of reasons) {
-          rows.push([
+          frozenIdxs.push(dataRows.length);
+          dataRows.push([
             chain,
             `frozen: ${reason}`,
             ...accountsList.map((acc) => {
@@ -88,14 +94,13 @@ export function balanceRecordToSheets(
               return bal?.decimalValue() ?? "";
             }),
           ]);
-          frozenRows.push(rows.length);
         }
       } catch {
         // no frozen reasons
       }
 
-      // RESERVED BALANCES
-      rows.push([
+      reservedIdxs.push(dataRows.length);
+      dataRows.push([
         chain,
         "reserved total",
         ...accountsList.map((acc) => {
@@ -104,13 +109,13 @@ export function balanceRecordToSheets(
           return bal?.decimalValue() ?? "";
         }),
       ]);
-      reservedRows.push(rows.length);
 
       try {
         const reasons = Object.keys(balances[token]![chain]!["reservedReason"]!);
         console.log("reserved reasons:", reasons);
         for (const reason of reasons) {
-          rows.push([
+          reservedIdxs.push(dataRows.length);
+          dataRows.push([
             chain,
             `reserved: ${reason}`,
             ...accountsList.map((acc) => {
@@ -119,18 +124,17 @@ export function balanceRecordToSheets(
               return bal?.decimalValue() ?? "";
             }),
           ]);
-          reservedRows.push(rows.length);
         }
       } catch {
         // no reserved reasons
       }
 
-      // Nomination Pools claimable rewards
       try {
         const pools = Object.keys(balances[token]![chain]!["nominationPool"]!);
         console.log("nominationPools:", pools);
         for (const pool of pools) {
-          rows.push([
+          reservedIdxs.push(dataRows.length);
+          dataRows.push([
             chain,
             `nominationPool ${pool}`,
             ...accountsList.map((acc) => {
@@ -139,18 +143,17 @@ export function balanceRecordToSheets(
               return bal?.decimalValue() ?? "";
             }),
           ]);
-          reservedRows.push(rows.length);
         }
       } catch {
         // no nomination pools
       }
 
-      // DEX liquidity pools
       try {
         const pools = Object.keys(balances[token]![chain]!["pool"]!);
         console.log("pools:", pools);
         for (const pool of pools) {
-          rows.push([
+          poolIdxs.push(dataRows.length);
+          dataRows.push([
             chain,
             `pool ${pool} share`,
             ...accountsList.map((acc) => {
@@ -159,51 +162,54 @@ export function balanceRecordToSheets(
               return bal?.decimalValue() ?? "";
             }),
           ]);
-          poolRows.push(rows.length);
         }
       } catch {
         // no pools
       }
     }
 
-    // Summary rows with formulas
-    rows.push([]);
+    // Convert data-relative indices to final 1-based row numbers
+    const toRow = (idx: number) => DATA_START + idx + 1;
 
-    const makeFormulaRow = (label: string, sourceRows: number[]) => [
+    const makeFormulaRow = (label: string, idxs: number[]) => [
       "",
       label,
       ...accountsList.map((_, i) => {
-        const col = colLetter(2 + i); // column C onwards
-        if (sourceRows.length === 0) return "";
-        return `=SUM(${sourceRows.map((r) => `${col}${r}`).join(",")})`;
+        const col = colLetter(2 + i);
+        if (idxs.length === 0) return "";
+        return `=SUM(${idxs.map((idx) => `${col}${toRow(idx)}`).join(",")})`;
       }),
     ];
 
-    rows.push(makeFormulaRow("Total transferable", transferableRows));
-    rows.push(makeFormulaRow("Total frozen", frozenRows));
-    rows.push(makeFormulaRow("Total reserved", reservedRows));
-    rows.push(makeFormulaRow("Total on-account balances", fullBalanceRows));
-    rows.push(makeFormulaRow("Total pooled", poolRows));
-
-    // Grand total = on-account + pooled
-    const rowCount = rows.length;
-    const onAccountRow = rowCount - 1; // Total on-account balances
-    const pooledRow = rowCount; // Total pooled
-    rows.push([
-      "",
-      "Grand total",
-      ...accountsList.map((_, i) => {
-        const col = colLetter(2 + i);
-        return `=${col}${onAccountRow}+${col}${pooledRow}`;
-      }),
-    ]);
+    // Assemble: headers + empty + summary + empty + data
+    const rows: any[][] = [
+      ["Chain", "balance kind", ...accountsList.map((acc) => acc.Address)],
+      ["", "", ...accountsList.map((acc) => acc.Name)],
+      ["", "", ...accountsList.map((acc) => acc.BeneficialOwner)],
+      ["Chain", "Type", ...accountsList.map((acc) => acc.Controller)],
+      [],
+      makeFormulaRow("Total transferable", transferableIdxs),
+      makeFormulaRow("Total frozen", frozenIdxs),
+      makeFormulaRow("Total reserved", reservedIdxs),
+      makeFormulaRow("Total on-account balances", fullBalanceIdxs),
+      makeFormulaRow("Total pooled", poolIdxs),
+      [
+        "",
+        "Grand total",
+        ...accountsList.map((_, i) => {
+          const col = colLetter(2 + i);
+          return `=${col}9+${col}10`; // on-account (row 9) + pooled (row 10)
+        }),
+      ],
+      [],
+      ...dataRows,
+    ];
 
     sheets[token] = rows;
     sheetMeta[token] = {
-      // Convert 1-based formula rows to 0-based indices
-      transferableRows: transferableRows.map((r) => r - 1),
-      reservedRows: reservedRows.map((r) => r - 1),
-      frozenRows: frozenRows.map((r) => r - 1),
+      transferableRows: transferableIdxs.map((idx) => DATA_START + idx),
+      reservedRows: reservedIdxs.map((idx) => DATA_START + idx),
+      frozenRows: frozenIdxs.map((idx) => DATA_START + idx),
     };
   }
   return { sheets, sheetMeta };

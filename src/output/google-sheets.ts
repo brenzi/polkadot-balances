@@ -139,14 +139,16 @@ export async function writeToGoogleSheets(
       },
     });
 
-    // Bold header rows (rows 1-4, after warning row)
-    formatRequests.push({
-      repeatCell: {
-        range: { sheetId: sheetTabId, startRowIndex: 1, endRowIndex: 5 },
-        cell: { userEnteredFormat: { textFormat: { bold: true } } },
-        fields: "userEnteredFormat.textFormat.bold",
-      },
-    });
+    // Bold header rows (rows 1-4) and summary rows (rows 6-12), after warning row
+    for (const [start, end] of [[1, 5], [6, 12]]) {
+      formatRequests.push({
+        repeatCell: {
+          range: { sheetId: sheetTabId, startRowIndex: start, endRowIndex: end },
+          cell: { userEnteredFormat: { textFormat: { bold: true } } },
+          fields: "userEnteredFormat.textFormat.bold",
+        },
+      });
+    }
 
     // Wrap text on address header row (row 1, after warning)
     formatRequests.push({
