@@ -23,7 +23,7 @@ export const CHAINS: ChainConfig[] = [
   {
     id: "dot",
     descriptor: dot,
-    wsUrls: ["wss://polkadot.chainbricks.synology.me:4100", "wss://polkadot-rpc.n.dwellir.com", "wss://rpc.polkadot.io"],
+    wsUrls: ["wss://bezzera.encointer.org:4101", "wss://polkadot.chainbricks.synology.me:4100", "wss://polkadot-rpc.n.dwellir.com", "wss://rpc.polkadot.io"],
     enabled: true,
     probes: [
       "core", "staking", "conviction", "proxy", "preimage", "referenda",
@@ -40,7 +40,7 @@ export const CHAINS: ChainConfig[] = [
   {
     id: "ksm",
     descriptor: ksm,
-    wsUrls: ["wss://kusama.chainbricks.synology.me:4200", "wss://kusama-rpc.n.dwellir.com", "wss://kusama-rpc.polkadot.io"],
+    wsUrls: ["wss://bezzera.encointer.org:4201", "wss://kusama.chainbricks.synology.me:4200", "wss://kusama-rpc.n.dwellir.com", "wss://kusama-rpc.polkadot.io"],
     enabled: true,
     probes: [
       "core", "staking", "conviction", "proxy", "preimage", "referenda",

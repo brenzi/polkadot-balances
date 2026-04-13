@@ -13,13 +13,13 @@ import {RELAY_NATIVE_FROM_PARACHAINS} from "./constants";
 
 const dotClient = createClient(
   withPolkadotSdkCompat(
-    getWsProvider(["wss://polkadot.chainbricks.synology.me:4100"])
+    getWsProvider(["wss://bezzera.encointer.org:4101"])
   )
 );
 const dotApi = dotClient.getTypedApi(dot)
 const ksmClient = createClient(
   withPolkadotSdkCompat(
-    getWsProvider(["wss://kusama.chainbricks.synology.me:4200"])
+    getWsProvider(["wss://bezzera.encointer.org:4201"])
   )
 );
 const ksmApi = ksmClient.getTypedApi(ksm)
