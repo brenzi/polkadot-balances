@@ -652,7 +652,6 @@ function balanceRecordToSheets(
               return bal?.decimalValue() ?? "";
             })
           ]);
-          reservedRows.push(rows.length);
         }
       } catch (e) {
         // no nomination pools

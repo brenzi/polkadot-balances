@@ -145,51 +145,55 @@ export const assetsProbe: BalanceProbe = {
             accounted += depositBal.decimalValue();
           }
 
-          // Pool share valuation — runtime API may not support `at`
-          if (!ctx.at) {
+          // Pool share valuation
+          try {
+            const poolAsset = await api.query.PoolAssets.Asset.getValue(poolAssetId, ...atOpt(ctx));
+            const liqTotal = poolAsset?.supply ?? 0n;
+            const poolShare = Number(liq.balance) / Number(liqTotal);
+            const poolMeta1 = await api.query.ForeignAssets.Metadata.getValue(assetId1, ...atOpt(ctx));
+            const poolMeta2 = await api.query.ForeignAssets.Metadata.getValue(assetId2, ...atOpt(ctx));
+            const relayNative = safeStringify(RELAY_NATIVE_FROM_PARACHAINS);
+            const assetSymbol1 =
+              safeStringify(assetId1) === relayNative ? symbol : poolMeta1.symbol.asText();
+            const assetSymbol2 =
+              safeStringify(assetId2) === relayNative ? symbol : poolMeta2.symbol.asText();
+            const assetDecimals1 =
+              safeStringify(assetId1) === relayNative ? decimals : Number(poolMeta1.decimals);
+            const assetDecimals2 =
+              safeStringify(assetId2) === relayNative ? decimals : Number(poolMeta2.decimals);
+            console.log(
+              `    User has liquidity tokens: ${poolShare} of pool of ${assetSymbol1} and ${assetSymbol2}`,
+            );
+            let reserves: [bigint, bigint];
             try {
-              const poolAsset = await api.query.PoolAssets.Asset.getValue(poolAssetId);
-              const liqTotal = poolAsset?.supply ?? 0n;
-              const poolShare = Number(liq.balance) / Number(liqTotal);
-              const poolMeta1 = await api.query.ForeignAssets.Metadata.getValue(assetId1);
-              const poolMeta2 = await api.query.ForeignAssets.Metadata.getValue(assetId2);
-              const relayNative = safeStringify(RELAY_NATIVE_FROM_PARACHAINS);
-              const assetSymbol1 =
-                safeStringify(assetId1) === relayNative ? symbol : poolMeta1.symbol.asText();
-              const assetSymbol2 =
-                safeStringify(assetId2) === relayNative ? symbol : poolMeta2.symbol.asText();
-              const assetDecimals1 =
-                safeStringify(assetId1) === relayNative ? decimals : Number(poolMeta1.decimals);
-              const assetDecimals2 =
-                safeStringify(assetId2) === relayNative ? decimals : Number(poolMeta2.decimals);
-              console.log(
-                `    User has liquidity tokens: ${poolShare} of pool of ${assetSymbol1} and ${assetSymbol2}`,
-              );
-              const reserves = await api.apis.AssetConversionApi.get_reserves(assetId1, assetId2);
-              const userAmount1 = new Balance(
-                BigInt(Math.round(poolShare * Number(reserves[0]))),
-                assetDecimals1,
-                assetSymbol1,
-              );
-              const userAmount2 = new Balance(
-                BigInt(Math.round(poolShare * Number(reserves[1]))),
-                assetDecimals2,
-                assetSymbol2,
-              );
-              console.log(
-                `    Corresponding to underlying assets: ${userAmount1.toString()} and ${userAmount2.toString()}`,
-              );
-              store(
-                [assetSymbol1, chain, "pool", `LP(${assetSymbol2}/${assetSymbol1})`, address],
-                userAmount1,
-              );
-              store(
-                [assetSymbol2, chain, "pool", `LP(${assetSymbol2}/${assetSymbol1})`, address],
-                userAmount2,
-              );
-            } catch (e: any) {
-              console.warn("    Error fetching pool reserves:", e.toString());
+              reserves = await api.apis.AssetConversionApi.get_reserves(assetId1, assetId2, ...atOpt(ctx));
+            } catch {
+              // Runtime API may not support `at` — retry without
+              reserves = await api.apis.AssetConversionApi.get_reserves(assetId1, assetId2);
             }
+            const userAmount1 = new Balance(
+              BigInt(Math.round(poolShare * Number(reserves[0]))),
+              assetDecimals1,
+              assetSymbol1,
+            );
+            const userAmount2 = new Balance(
+              BigInt(Math.round(poolShare * Number(reserves[1]))),
+              assetDecimals2,
+              assetSymbol2,
+            );
+            console.log(
+              `    Corresponding to underlying assets: ${userAmount1.toString()} and ${userAmount2.toString()}`,
+            );
+            store(
+              [assetSymbol1, chain, "pool", `LP(${assetSymbol2}/${assetSymbol1})`, address],
+              userAmount1,
+            );
+            store(
+              [assetSymbol2, chain, "pool", `LP(${assetSymbol2}/${assetSymbol1})`, address],
+              userAmount2,
+            );
+          } catch (e: any) {
+            console.warn("    Error fetching pool reserves:", e.toString());
           }
         }
       }

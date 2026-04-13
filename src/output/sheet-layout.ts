@@ -82,7 +82,6 @@ export function balanceRecordToSheets(
       try {
         const reasons = Object.keys(balances[token]![chain]!["frozenReason"]!);
         for (const reason of reasons) {
-          frozenIdxs.push(dataRows.length);
           pushRow(`frozen: ${reason}`, accountsList.map((acc) => {
             const ab = (balances[token]![chain] as any)?.["frozenReason"];
             return (ab?.[reason]?.[acc.Address] as Balance | undefined)?.decimalValue() ?? "";
@@ -99,7 +98,6 @@ export function balanceRecordToSheets(
       try {
         const reasons = Object.keys(balances[token]![chain]!["reservedReason"]!);
         for (const reason of reasons) {
-          reservedIdxs.push(dataRows.length);
           pushRow(`reserved: ${reason}`, accountsList.map((acc) => {
             const ab = (balances[token]![chain] as any)?.["reservedReason"];
             return (ab?.[reason]?.[acc.Address] as Balance | undefined)?.decimalValue() ?? "";
@@ -110,7 +108,6 @@ export function balanceRecordToSheets(
       try {
         const pools = Object.keys(balances[token]![chain]!["nominationPool"]!);
         for (const pool of pools) {
-          reservedIdxs.push(dataRows.length);
           pushRow(`nominationPool ${pool}`, accountsList.map((acc) => {
             const ab = (balances[token]![chain] as any)?.["nominationPool"];
             return (ab?.[pool]?.[acc.Address] as Balance | undefined)?.decimalValue() ?? "";
