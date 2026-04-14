@@ -232,6 +232,19 @@ export async function writeToGoogleSheets(
     // Chain merges in column A
     const rowMeta = gsMeta?.[tabName];
     if (rowMeta) {
+      // Unmerge any existing merges in column A before re-merging
+      formatRequests.push({
+        unmergeCells: {
+          range: {
+            sheetId: sheetTabId,
+            startRowIndex: 0,
+            endRowIndex: aoa.length,
+            startColumnIndex: 0,
+            endColumnIndex: 1,
+          },
+        },
+      });
+
       for (const merge of rowMeta.chainMerges) {
         formatRequests.push({
           mergeCells: {
