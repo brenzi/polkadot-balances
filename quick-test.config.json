@@ -1,0 +1,19 @@
+{
+  "accounts": [
+    {
+      "address": "1XA6jQ3cnLmQHAircDD4m2vLnoUKygqnYxQGU5hWiNRqGKM",
+      "name": "SomeVoter",
+      "beneficialOwner": "test",
+      "controller": "test"
+    }
+  ],
+  "sheetId": "1yCxay_g-0Wj1s8JOpfE7uRk67hVwHBT5dm8v57esY48",
+  "credentials": "/work/encointer-network-61a22d2a0d11.json",
+  "rpcNodes": {
+    "dot": ["wss://polkadot.chainbricks.synology.me:4100", "wss://rpc.polkadot.io"],
+    "pah": ["wss://bezzera.encointer.org:4130", "wss://polkadot-asset-hub-rpc.polkadot.io"],
+    "ksm": ["wss://kusama.chainbricks.synology.me:4200", "wss://kusama-rpc.polkadot.io"],
+    "kah": ["wss://bezzera.encointer.org:4230", "wss://sys.ibp.network/asset-hub-kusama"],
+    "enc": ["wss://kusama.api.encointer.org"]
+  }
+}
